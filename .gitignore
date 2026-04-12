@@ -1,0 +1,37 @@
+# Dependencies
+app/node_modules/
+
+# Next.js build output
+app/.next/
+app/out/
+
+# Environment variables (never commit)
+app/.env.local
+app/.env.*.local
+.env.local
+.env.*.local
+
+# Vercel
+.vercel
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+app/next-env.d.ts
