@@ -1,9 +1,15 @@
 import { inngest } from './client'
-import { updateReport, updateProbe, insertProbes, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
+import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
 import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
+import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
+import { scoreRetrieval } from '@/lib/scoring/retrieval'
+import { scoreEntity } from '@/lib/scoring/entity'
+import { scoreSocialProof } from '@/lib/scoring/social-proof'
+import { priorityScore } from '@/lib/scoring/priority'
+import { generateRecommendations } from '@/lib/recommendations'
 
 export const runAnalysis = inngest.createFunction(
   {
@@ -129,10 +135,59 @@ export const runAnalysis = inngest.createFunction(
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 
-    // Phase 4 (scoring + recommendations) added next
-    await step.run('stub-complete', async () => {
+    // Step 7: Score all 4 categories
+    const scores = await step.run('score', async () => {
+      await emitEvent(reportId, 'scoring_done', 'Scoring your AI visibility...')
+      const allProbes = await getProbesByReport(reportId)
+      const report = await getReport(reportId)
+      if (!report) throw new Error('Report not found')
+
+      const brandDomain = new URL(report.url).hostname.replace(/^www\./, '')
+
+      const [catResult, retResult, entResult, spResult] = await Promise.all([
+        Promise.resolve(scoreCategoryAssociation(allProbes, inference.competitors)),
+        Promise.resolve(scoreRetrieval(allProbes, brandDomain)),
+        scoreEntity(inference, ''), // homepage HTML not stored; schema check skipped for now
+        scoreSocialProof(inference),
+      ])
+
+      const categories = [
+        { category: 'category_association' as const, ...catResult },
+        { category: 'retrieval' as const, ...retResult },
+        { category: 'entity' as const, ...entResult },
+        { category: 'social_proof' as const, ...spResult },
+      ]
+
+      const scored = categories.map((c) => ({
+        report_id: reportId,
+        category: c.category,
+        raw_score: c.raw_score,
+        component_scores_json: c.component_scores_json,
+        priority_score: priorityScore(c.category, c.raw_score),
+      }))
+
+      await Promise.all(scored.map((s) => upsertScore(s)))
+      return scored
+    })
+
+    // Step 8: Generate recommendations for each category
+    await step.run('recommendations', async () => {
+      await emitEvent(reportId, 'scoring_done', 'Generating recommendations...')
+
+      await Promise.all(
+        scores.map(async (score) => {
+          const recs = await generateRecommendations(
+            { ...score, id: '', created_at: '' },
+            inference
+          )
+          await insertRecommendations(
+            recs.map((r) => ({ ...r, score_id: '', report_id: reportId }))
+          )
+        })
+      )
+
       await updateReport(reportId, { status: 'complete', completed_at: new Date().toISOString() })
-      await emitEvent(reportId, 'complete', 'Probes and parsing complete')
+      await emitEvent(reportId, 'complete', 'Analysis complete')
     })
   }
 )
