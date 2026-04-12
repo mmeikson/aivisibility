@@ -2,7 +2,9 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { CrawledSite } from './crawler'
 import type { InferenceResult } from './db/types'
 
-const client = new Anthropic()
+function getClient() {
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+}
 
 export interface GeneratedProbe {
   prompt_text: string
@@ -17,7 +19,7 @@ export async function inferBusinessContext(site: CrawledSite): Promise<Inference
     .join('\n\n')
     .slice(0, 12_000) // ~3k tokens
 
-  const response = await client.messages.create({
+  const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [
@@ -63,7 +65,7 @@ ${pageContent}`,
 // ---- Probe generation ----
 
 export async function generateProbes(inference: InferenceResult): Promise<GeneratedProbe[]> {
-  const response = await client.messages.create({
+  const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     messages: [

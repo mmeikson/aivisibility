@@ -1,5 +1,8 @@
 // Quick smoke test: crawl a known site and run inference
-// Run with: npx tsx scripts/test-inference.ts
+// Run with: npx tsx scripts/test-inference.ts [url]
+
+import { config } from 'dotenv'
+config({ path: '.env.local' })
 
 import { crawlSite } from '../lib/crawler'
 import { inferBusinessContext, generateProbes } from '../lib/inference'
