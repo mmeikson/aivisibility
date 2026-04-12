@@ -1,7 +1,9 @@
 import { inngest } from './client'
-import { updateReport, insertProbes, emitEvent, getReport } from '@/lib/db/queries'
+import { updateReport, insertProbes, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
+import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from './probe-platform'
+import { parseProbeResponses } from '@/lib/parse-responses'
 
 export const runAnalysis = inngest.createFunction(
   {
@@ -14,7 +16,6 @@ export const runAnalysis = inngest.createFunction(
     event: { data: { reportId: string } }
     step: {
       run: <T>(id: string, fn: () => Promise<T>) => Promise<T>
-      sendEvent: (id: string, events: unknown[]) => Promise<void>
     }
   }) => {
     const { reportId } = event.data
@@ -33,7 +34,7 @@ export const runAnalysis = inngest.createFunction(
       const site = await crawlSite(report.url)
 
       if (site.pages.length === 0) {
-        await emitEvent(reportId, 'error', 'Could not retrieve any content from this website. It may require JavaScript rendering or block automated requests.')
+        await emitEvent(reportId, 'error', 'Could not retrieve any content from this website.')
         await updateReport(reportId, { status: 'failed' })
         throw new Error('Crawl returned no pages')
       }
@@ -45,7 +46,6 @@ export const runAnalysis = inngest.createFunction(
     // Step 3: Business understanding
     const inference = await step.run('business-understanding', async () => {
       await emitEvent(reportId, 'crawl_done', 'Understanding your business...')
-
       const result = await inferBusinessContext(crawlResult)
 
       await updateReport(reportId, {
@@ -55,23 +55,17 @@ export const runAnalysis = inngest.createFunction(
         inference_json: result,
       })
 
-      await emitEvent(
-        reportId,
-        'inference_done',
-        `Identified: ${result.company_name} — ${result.category}`
-      )
-
+      await emitEvent(reportId, 'inference_done', `Identified: ${result.company_name} — ${result.category}`)
       return result
     })
 
     // Step 4: Probe generation
-    const probes = await step.run('probe-generation', async () => {
+    await step.run('probe-generation', async () => {
       await emitEvent(reportId, 'inference_done', 'Generating test prompts...')
 
       const generated = await generateProbes(inference)
-
-      // Persist probes (all platforms, status=pending)
       const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
+
       const rows = generated.flatMap((p) =>
         platforms.map((platform) => ({
           report_id: reportId,
@@ -86,22 +80,59 @@ export const runAnalysis = inngest.createFunction(
         }))
       )
 
-      const inserted = await insertProbes(rows)
+      await insertProbes(rows)
 
+      const platformCount = process.env.PERPLEXITY_API_KEY ? 4 : 3
       await emitEvent(
         reportId,
         'probes_start',
-        `Generated ${generated.length} prompts — running across 4 AI platforms (${inserted.length} total queries)`
+        `Running ${generated.length} prompts across ${platformCount} AI platforms...`
       )
-
-      return inserted
     })
 
-    // Phases 3–4: probe execution, parsing, scoring, recommendations added next
-    // Temporary: mark complete so the UI can redirect
+    // Step 5: Run all 4 platforms in parallel
+    await Promise.all([
+      step.run('probe-openai', async () => {
+        const probes = await getProbesByPlatform(reportId, 'openai')
+        await probeOpenAI(probes)
+        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: ${probes.length} probes complete`)
+      }),
+
+      step.run('probe-anthropic', async () => {
+        const probes = await getProbesByPlatform(reportId, 'anthropic')
+        await probeAnthropic(probes)
+        await emitEvent(reportId, 'probe_batch_done', `Claude: ${probes.length} probes complete`)
+      }),
+
+      step.run('probe-perplexity', async () => {
+        if (!process.env.PERPLEXITY_API_KEY) {
+          await emitEvent(reportId, 'probe_batch_done', 'Perplexity: skipped (no API key)')
+          return
+        }
+        const probes = await getProbesByPlatform(reportId, 'perplexity')
+        await probePerplexity(probes)
+        await emitEvent(reportId, 'probe_batch_done', `Perplexity: ${probes.length} probes complete`)
+      }),
+
+      step.run('probe-google', async () => {
+        const probes = await getProbesByPlatform(reportId, 'google')
+        await probeGoogle(probes)
+        await emitEvent(reportId, 'probe_batch_done', `Gemini: ${probes.length} probes complete`)
+      }),
+    ])
+
+    // Step 6: Parse all responses
+    await step.run('parse-responses', async () => {
+      await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
+      const allProbes = await getProbesByReport(reportId)
+      await parseProbeResponses(allProbes, inference.company_name)
+      await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
+    })
+
+    // Phase 4 (scoring + recommendations) added next
     await step.run('stub-complete', async () => {
       await updateReport(reportId, { status: 'complete', completed_at: new Date().toISOString() })
-      await emitEvent(reportId, 'complete', `Inference complete — ${probes.length} probes ready to run`)
+      await emitEvent(reportId, 'complete', 'Probes and parsing complete')
     })
   }
 )

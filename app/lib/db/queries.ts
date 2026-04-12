@@ -49,6 +49,17 @@ export async function getProbesByReport(reportId: string): Promise<Probe[]> {
   return data ?? []
 }
 
+export async function getProbesByPlatform(reportId: string, platform: string): Promise<Probe[]> {
+  const db = createServiceClient()
+  const { data, error } = await db
+    .from('probes')
+    .select('*')
+    .eq('report_id', reportId)
+    .eq('platform', platform)
+  if (error) throw error
+  return data ?? []
+}
+
 // ---- Scores ----
 
 export async function upsertScore(score: Omit<Score, 'id' | 'created_at'>) {
