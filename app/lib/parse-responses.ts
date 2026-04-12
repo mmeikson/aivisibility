@@ -43,7 +43,7 @@ Brand name to look for: "${companyName}"
 
 For each response below, extract:
 - was_mentioned: true if the brand name appears anywhere in the response
-- mention_positions: if the response contains a numbered list, which position(s) does the brand appear at (1-indexed). Empty array if no list or not mentioned.
+- mention_positions: ONLY if the response contains an explicit numbered or bulleted list of recommendations/tools, which list position(s) (1-indexed) does the brand appear at. If there is no ranked list, return []. Do NOT return character positions or word counts.
 - recommendation_strength: "none" if not mentioned, "hedged" if mentioned with caveats/qualifications, "confident" if recommended directly
 - competitor_mentions: array of any competitor/alternative brand names mentioned
 - cited_urls: copy the cited_urls array from the input (already extracted)

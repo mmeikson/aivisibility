@@ -1,5 +1,5 @@
 import { inngest } from './client'
-import { updateReport, insertProbes, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
+import { updateReport, updateProbe, insertProbes, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
 import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from './probe-platform'
@@ -94,13 +94,13 @@ export const runAnalysis = inngest.createFunction(
     await Promise.all([
       step.run('probe-openai', async () => {
         const probes = await getProbesByPlatform(reportId, 'openai')
-        await probeOpenAI(probes)
+        await probeOpenAI(probes, (id, u) => updateProbe(id, u))
         await emitEvent(reportId, 'probe_batch_done', `ChatGPT: ${probes.length} probes complete`)
       }),
 
       step.run('probe-anthropic', async () => {
         const probes = await getProbesByPlatform(reportId, 'anthropic')
-        await probeAnthropic(probes)
+        await probeAnthropic(probes, (id, u) => updateProbe(id, u))
         await emitEvent(reportId, 'probe_batch_done', `Claude: ${probes.length} probes complete`)
       }),
 
@@ -110,13 +110,13 @@ export const runAnalysis = inngest.createFunction(
           return
         }
         const probes = await getProbesByPlatform(reportId, 'perplexity')
-        await probePerplexity(probes)
+        await probePerplexity(probes, (id, u) => updateProbe(id, u))
         await emitEvent(reportId, 'probe_batch_done', `Perplexity: ${probes.length} probes complete`)
       }),
 
       step.run('probe-google', async () => {
         const probes = await getProbesByPlatform(reportId, 'google')
-        await probeGoogle(probes)
+        await probeGoogle(probes, (id, u) => updateProbe(id, u))
         await emitEvent(reportId, 'probe_batch_done', `Gemini: ${probes.length} probes complete`)
       }),
     ])
