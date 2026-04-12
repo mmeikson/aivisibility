@@ -1,5 +1,5 @@
 import { inngest } from './client'
-import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform } from '@/lib/db/queries'
+import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
 import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from './probe-platform'
@@ -174,14 +174,14 @@ export const runAnalysis = inngest.createFunction(
     await step.run('recommendations', async () => {
       await emitEvent(reportId, 'scoring_done', 'Generating recommendations...')
 
+      // Re-fetch scores from DB to get their actual UUIDs
+      const dbScores = await getScoresByReport(reportId)
+
       await Promise.all(
-        scores.map(async (score) => {
-          const recs = await generateRecommendations(
-            { ...score, id: '', created_at: '' },
-            inference
-          )
+        dbScores.map(async (score) => {
+          const recs = await generateRecommendations(score, inference)
           await insertRecommendations(
-            recs.map((r) => ({ ...r, score_id: '', report_id: reportId }))
+            recs.map((r) => ({ ...r, score_id: score.id, report_id: reportId }))
           )
         })
       )

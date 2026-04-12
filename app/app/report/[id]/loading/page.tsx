@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getSupabaseClient } from '@/lib/db/client'
-import { Progress } from '@/components/ui/progress'
 import type { PipelineEvent } from '@/lib/db/types'
 
 const STEP_ORDER = [
@@ -19,7 +18,7 @@ const STEP_ORDER = [
 function progressPercent(events: PipelineEvent[]): number {
   const types = events.map((e) => e.event_type)
   const lastStep = [...STEP_ORDER].reverse().find((s) => types.includes(s as PipelineEvent['event_type']))
-  if (!lastStep) return 5
+  if (!lastStep) return 4
   const idx = STEP_ORDER.indexOf(lastStep)
   return Math.round(((idx + 1) / STEP_ORDER.length) * 100)
 }
@@ -29,18 +28,42 @@ export default function LoadingPage() {
   const router = useRouter()
   const [events, setEvents] = useState<PipelineEvent[]>([])
   const [error, setError] = useState('')
+  const [url, setUrl] = useState('')
 
   useEffect(() => {
-    // Load existing events
-    async function loadEvents() {
+    // Load report URL
+    getSupabaseClient()
+      .from('reports')
+      .select('url')
+      .eq('id', id)
+      .single()
+      .then(({ data }) => { if (data) setUrl(data.url) })
+
+    // Load existing events — redirect immediately if already complete
+    getSupabaseClient()
+      .from('pipeline_events')
+      .select('*')
+      .eq('report_id', id)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (data) {
+          setEvents(data)
+          if (data.some((e) => e.event_type === 'complete')) {
+            router.push(`/report/${id}`)
+          }
+        }
+      })
+
+    // Poll report status every 5s as fallback if Realtime misses the event
+    const poll = setInterval(async () => {
       const { data } = await getSupabaseClient()
-        .from('pipeline_events')
-        .select('*')
-        .eq('report_id', id)
-        .order('created_at', { ascending: true })
-      if (data) setEvents(data)
-    }
-    loadEvents()
+        .from('reports')
+        .select('status')
+        .eq('id', id)
+        .single()
+      if (data?.status === 'complete') router.push(`/report/${id}`)
+      if (data?.status === 'failed') setError('Analysis failed. Please try again.')
+    }, 5000)
 
     // Subscribe to new events via Realtime
     const channel = getSupabaseClient()
@@ -56,7 +79,6 @@ export default function LoadingPage() {
         (payload) => {
           const event = payload.new as PipelineEvent
           setEvents((prev) => [...prev, event])
-
           if (event.event_type === 'complete') {
             setTimeout(() => router.push(`/report/${id}`), 800)
           }
@@ -69,38 +91,115 @@ export default function LoadingPage() {
 
     return () => {
       getSupabaseClient().removeChannel(channel)
+      clearInterval(poll)
     }
   }, [id, router])
 
   const progress = progressPercent(events)
-  const latestMessage = events.at(-1)?.message ?? 'Initializing...'
+  const isComplete = events.some((e) => e.event_type === 'complete')
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 text-center">
-        <h1 className="text-2xl font-semibold">Analyzing your brand visibility</h1>
+    <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
+      {/* Top bar */}
+      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+        <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
+          GEO Visibility
+        </span>
+        <span className="text-xs text-[#6C6C6C]">Beta</span>
+      </header>
 
-        <div className="space-y-2">
-          <Progress value={progress} className="h-2" />
-          <p className="text-sm text-muted-foreground">{latestMessage}</p>
-        </div>
+      {/* Main */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
+        <div className="w-full max-w-lg space-y-10">
 
-        {error && (
-          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-            {error}
+          {/* Heading */}
+          <div className="space-y-2 fade-up">
+            <div className="flex items-center gap-2 text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
+              <span className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-[#16a34a]' : 'bg-[#141414] pulse-dot'}`} />
+              {isComplete ? 'Complete' : 'In progress'}
+            </div>
+            <h1
+              className="text-3xl text-[#141414] leading-tight tracking-tight"
+              style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
+            >
+              Analyzing your<br />AI visibility
+            </h1>
+            {url && (
+              <p className="text-sm font-mono text-[#6C6C6C] truncate">{url.replace(/^https?:\/\//, '')}</p>
+            )}
           </div>
-        )}
 
-        <div className="text-left space-y-1 max-h-48 overflow-y-auto">
-          {events.map((e) => (
-            <p key={e.id} className="text-xs text-muted-foreground">
-              {e.message}
-            </p>
-          ))}
+          {/* Progress bar */}
+          <div className="space-y-2 fade-up fade-up-1">
+            <div className="h-0.5 w-full bg-[#E5E2DC] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#141414] rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="flex justify-between">
+              <span className="text-xs font-mono text-[#ABABAB]">{progress}%</span>
+              <span className="text-xs text-[#ABABAB]">~2–4 min</span>
+            </div>
+          </div>
+
+          {/* Event feed */}
+          <div className="space-y-0 fade-up fade-up-2">
+            {events.length === 0 ? (
+              <div className="flex items-center gap-3 py-2">
+                <span className="w-1 h-1 rounded-full bg-[#141414] pulse-dot" />
+                <span className="text-sm text-[#6C6C6C]">Initializing...</span>
+              </div>
+            ) : (
+              events.map((e, i) => {
+                const isLast = i === events.length - 1
+                const isErr = e.event_type === 'error'
+                return (
+                  <div key={e.id} className="flex items-start gap-3 py-1.5 group">
+                    <div className="flex flex-col items-center mt-1 shrink-0">
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          isErr
+                            ? 'bg-[#b91c1c]'
+                            : isLast && !isComplete
+                            ? 'bg-[#141414] pulse-dot'
+                            : 'bg-[#CDCBC6]'
+                        }`}
+                      />
+                    </div>
+                    <span
+                      className={`text-sm leading-snug ${
+                        isErr
+                          ? 'text-[#b91c1c]'
+                          : isLast
+                          ? 'text-[#141414]'
+                          : 'text-[#ABABAB]'
+                      }`}
+                    >
+                      {e.message}
+                    </span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {/* Error state */}
+          {error && (
+            <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#b91c1c]">
+              {error}
+              <a href="/" className="ml-2 underline">Start over</a>
+            </div>
+          )}
+
         </div>
-
-        <p className="text-xs text-muted-foreground">This takes 2–4 minutes. Don&apos;t close this tab.</p>
       </div>
+
+      {/* Footer */}
+      <footer className="px-8 py-4 border-t border-[#E5E2DC] flex items-center justify-between">
+        <span className="text-xs text-[#ABABAB]">Don&apos;t close this tab — analysis is running.</span>
+        <span className="text-xs text-[#ABABAB] font-mono">v1</span>
+      </footer>
     </main>
   )
 }

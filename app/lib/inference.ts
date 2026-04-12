@@ -80,20 +80,20 @@ Company details:
 - Target customer: ${inference.target_customer}
 - Known competitors: ${inference.competitors.join(', ')}
 
-Generate 18-24 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
+Generate 5 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
 Types and examples:
 1. "discovery" — prompts someone would use to find tools in this category
    e.g. "Best ${inference.category} tools", "Top ${inference.category} for ${inference.target_customer}"
-   Generate 6-8 discovery prompts.
+   Generate 2 discovery prompts.
 
 2. "comparison" — prompts comparing this brand to competitors
    e.g. "${inference.company_name} vs [Competitor]", "Is ${inference.company_name} better than [Competitor]?"
-   Generate one prompt per competitor (${inference.competitors.length} prompts).
+   Generate 1 comparison prompt (pick the top competitor).
 
 3. "job_to_be_done" — prompts framed around the task, not the category
    e.g. "How do I ${inference.primary_use_case}?", "Software to help me ${inference.primary_use_case}"
-   Generate 5-7 job-to-be-done prompts.
+   Generate 2 job-to-be-done prompts.
 
 Rules:
 - Make prompts sound like real user queries, not formal questions

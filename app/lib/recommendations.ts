@@ -74,18 +74,20 @@ Return ONLY valid JSON, no explanation.`
 
   const res = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   })
 
   const text = res.content[0]?.type === 'text' ? res.content[0].text : '[]'
   const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
-  const raw = JSON.parse(jsonStr) as Array<{
-    title: string
-    why_it_matters: string
-    actions: string[]
-    copy_asset: string
-  }>
+  type RawRec = { title: string; why_it_matters: string; actions: string[]; copy_asset: string }
+  let raw: RawRec[]
+  try {
+    raw = JSON.parse(jsonStr) as RawRec[]
+  } catch {
+    console.error('Failed to parse recommendations JSON for', category, jsonStr.slice(0, 200))
+    return []
+  }
 
   return raw.map((r) => ({
     title: r.title,
