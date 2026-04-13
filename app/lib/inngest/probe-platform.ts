@@ -29,7 +29,7 @@ function dateContext(): string {
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-  for (const probe of probes) {
+  await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
       const res = await client.chat.completions.create({
@@ -56,7 +56,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
       console.error(`OpenAI probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-  }
+  }))
 }
 
 // ---- Anthropic (claude-sonnet-4-6, web search tool) ----
@@ -64,7 +64,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
 export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  for (const probe of probes) {
+  await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
       const res = await client.messages.create({
@@ -76,12 +76,10 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
         messages: [{ role: 'user', content: probe.prompt_text }],
         temperature: 0,
       })
-      // Response may contain tool_use blocks (search calls) alongside text — collect only text
       const text = res.content
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
         .join('\n')
-      // Extract URLs from inline markdown links in the response text
       const urlMatches = text.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
       const citedUrls = [...new Set(urlMatches)]
       await onResult(probe.id, {
@@ -94,7 +92,7 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
       console.error(`Anthropic probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-  }
+  }))
 }
 
 // ---- Perplexity (sonar-pro, live web retrieval) ----
@@ -162,7 +160,7 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
     generationConfig: { temperature: 0 },
   })
 
-  for (const probe of probes) {
+  await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
       const result = await model.generateContent(`[Today is ${dateContext()}]\n\n${probe.prompt_text}`)
@@ -185,5 +183,5 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
       console.error(`Google probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-  }
+  }))
 }
