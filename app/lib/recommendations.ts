@@ -64,6 +64,8 @@ Generate 2–3 specific, actionable recommendations for this category. Return a 
   "copy_asset": "ready-to-use text asset (description, content brief, email template, etc.)"
 }]
 
+IMPORTANT for action steps: every action must make clear WHERE the change is made. If it's on the company's own website, prefix with "On your website:". If it's on a third-party platform, name the platform explicitly (e.g. "On LinkedIn:", "On G2:", "In Google Search Console:"). Never write steps that leave it ambiguous where the work happens.
+
 For the copy asset:
 - entity category: write a canonical one-sentence company description optimized for consistency across G2, LinkedIn, Crunchbase, Capterra
 - category_association category: write a content outline for a comparison page vs their top competitor
