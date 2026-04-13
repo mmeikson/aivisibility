@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/db/client'
 import type { PipelineEvent } from '@/lib/db/types'
 
@@ -102,9 +103,10 @@ export default function LoadingPage() {
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
       <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
-        <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
-          GEO Visibility
-        </span>
+        <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
+        </Link>
         <span className="text-xs text-[#6C6C6C]">Beta</span>
       </header>
 

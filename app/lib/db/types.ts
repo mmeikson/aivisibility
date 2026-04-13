@@ -44,6 +44,8 @@ export interface ParsedProbeResult {
   competitor_mentions: string[]
   cited_urls: string[]
   cited_domains: string[]
+  entity_confused: boolean
+  confused_with: string | null
 }
 
 export interface Probe {

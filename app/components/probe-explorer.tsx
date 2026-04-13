@@ -238,6 +238,14 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
               </span>
             </>
           )}
+          {parsed?.entity_confused && (
+            <>
+              <span className="text-[#CDCBC6]">·</span>
+              <span className="text-[#b45309]">
+                ⚠ confused with {parsed.confused_with ?? 'another entity'}
+              </span>
+            </>
+          )}
           {competitors.length > 0 && (
             <>
               <span className="text-[#CDCBC6]">·</span>

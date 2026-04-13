@@ -47,9 +47,10 @@ export default function HomePage() {
     <main className="min-h-screen flex flex-col">
       {/* Top bar */}
       <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
-        <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
-          GEO Visibility
-        </span>
+        <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
+        </Link>
         <div className="flex items-center gap-4">
           {isLoggedIn ? (
             <Link href="/dashboard" className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors">

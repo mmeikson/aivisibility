@@ -131,7 +131,7 @@ export const runAnalysis = inngest.createFunction(
     await step.run('parse-responses', async () => {
       await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
       const allProbes = await getProbesByReport(reportId)
-      await parseProbeResponses(allProbes, inference.company_name)
+      await parseProbeResponses(allProbes, inference)
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 
@@ -147,7 +147,7 @@ export const runAnalysis = inngest.createFunction(
       const [catResult, retResult, entResult, spResult] = await Promise.all([
         Promise.resolve(scoreCategoryAssociation(allProbes, inference.competitors)),
         Promise.resolve(scoreRetrieval(allProbes, brandDomain)),
-        scoreEntity(inference, ''), // homepage HTML not stored; schema check skipped for now
+        scoreEntity(inference, '', allProbes), // homepage HTML not stored; schema check skipped for now
         scoreSocialProof(inference),
       ])
 

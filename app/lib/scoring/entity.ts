@@ -1,4 +1,4 @@
-import type { InferenceResult } from '@/lib/db/types'
+import type { InferenceResult, Probe } from '@/lib/db/types'
 
 // Entity Recognition Score (0–100)
 // Measures how consistently the brand is described across surfaces an LLM would
@@ -25,7 +25,8 @@ function domainPresent(results: SerpResult, domain: string): boolean {
 
 export async function scoreEntity(
   inference: InferenceResult,
-  crawledHomepageHtml: string
+  crawledHomepageHtml: string,
+  probes: Probe[] = []
 ): Promise<{ raw_score: number; component_scores_json: Record<string, number> }> {
 
   // Component 1: Schema markup (20 pts)
@@ -71,9 +72,8 @@ export async function scoreEntity(
     // Wikipedia lookup failed — skip
   }
 
-  // Component 5: Description consistency (40 pts)
-  // For MVP: search brand name and check if top results use similar category language
-  let consistencyScore = 20 // default mid-range
+  // Component 5: Description consistency (20 pts)
+  let consistencyScore = 10 // default mid-range
   try {
     const searchResults = await serpSearch(inference.company_name)
     const snippets = (searchResults.organic_results ?? [])
@@ -84,15 +84,28 @@ export async function scoreEntity(
     const matchCount = categoryWords.filter((w) => w.length > 3 && snippets.includes(w)).length
     const matchRatio = categoryWords.length > 0 ? matchCount / categoryWords.length : 0
 
-    if (matchRatio >= 0.8) consistencyScore = 40
-    else if (matchRatio >= 0.6) consistencyScore = 28
-    else if (matchRatio >= 0.4) consistencyScore = 16
+    if (matchRatio >= 0.8) consistencyScore = 20
+    else if (matchRatio >= 0.6) consistencyScore = 14
+    else if (matchRatio >= 0.4) consistencyScore = 8
     else consistencyScore = 0
   } catch {
     // Keep default
   }
 
-  const raw_score = Math.min(100, schemaScore + specificityScore + profileScore + wikipediaScore + consistencyScore)
+  // Component 6: Entity disambiguation (20 pts)
+  // Measures how often AI models correctly identify the company vs. confusing it with another entity
+  let disambiguationScore = 20
+  const parsedProbes = probes.filter((p) => p.parsed_json !== null)
+  if (parsedProbes.length > 0) {
+    const confusedCount = parsedProbes.filter((p) => p.parsed_json?.entity_confused).length
+    const confusionRate = confusedCount / parsedProbes.length
+    if (confusionRate >= 0.5) disambiguationScore = 0
+    else if (confusionRate >= 0.25) disambiguationScore = 8
+    else if (confusionRate > 0) disambiguationScore = 14
+    else disambiguationScore = 20
+  }
+
+  const raw_score = Math.min(100, schemaScore + specificityScore + profileScore + wikipediaScore + consistencyScore + disambiguationScore)
 
   return {
     raw_score,
@@ -102,6 +115,7 @@ export async function scoreEntity(
       profile_completeness: profileScore,
       wikipedia_presence: wikipediaScore,
       description_consistency: consistencyScore,
+      entity_disambiguation: disambiguationScore,
     },
   }
 }

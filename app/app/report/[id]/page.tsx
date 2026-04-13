@@ -66,7 +66,8 @@ export default async function ReportPage({ params }: Props) {
     return (
       <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
         <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
-          <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">GEO Visibility</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
           <span className="text-xs text-[#6C6C6C]">Beta</span>
         </header>
         <div className="flex-1 flex items-center justify-center">
@@ -106,8 +107,9 @@ export default async function ReportPage({ params }: Props) {
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
       <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
-        <Link href="/" className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase hover:text-[#141414] transition-colors">
-          GEO Visibility
+        <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
         <div className="flex items-center gap-4">
           {user && (
@@ -381,6 +383,11 @@ function ScoreCard({ score, reportId, delay, companyName }: { score: Score; repo
         {diagnostic && (
           <p className="text-xs text-[#6C6C6C] leading-relaxed">{diagnostic}</p>
         )}
+        <div className="pt-1">
+          <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
+            See recommendations <span>→</span>
+          </span>
+        </div>
       </div>
     </Link>
   )

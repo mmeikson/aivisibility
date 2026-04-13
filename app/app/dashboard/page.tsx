@@ -48,8 +48,9 @@ export default async function DashboardPage() {
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
-        <Link href="/" className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase hover:text-[#141414] transition-colors">
-          GEO Visibility
+        <Link href="/">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
         <div className="flex items-center gap-4">
           <span className="text-xs text-[#ABABAB]">{user.email}</span>

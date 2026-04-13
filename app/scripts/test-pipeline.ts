@@ -194,6 +194,8 @@ ${JSON.stringify(input)}`,
             cited_domains: (probe.citations ?? []).flatMap((url: string) => {
               try { return [new URL(url).hostname.replace(/^www\./, '')] } catch { return [] }
             }),
+            entity_confused: false,
+            confused_with: null,
           },
         })
       }
