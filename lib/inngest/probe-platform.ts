@@ -107,7 +107,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
             [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
             bdKey
           ),
-          timeout(45_000, `ChatGPT probe ${probe.id} attempt ${attempt + 1}`),
+          timeout(90_000, `ChatGPT probe ${probe.id} attempt ${attempt + 1}`),
         ])
         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
         return
@@ -251,7 +251,7 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
           { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, index: 1 }] },
           bdKey
         ),
-        timeout(75_000, `Gemini probe ${probe.id}`),
+        timeout(90_000, `Gemini probe ${probe.id}`),
       ])
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {

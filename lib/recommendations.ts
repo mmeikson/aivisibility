@@ -84,7 +84,7 @@ Return ONLY valid JSON, no explanation.`
   for (let attempt = 1; attempt <= 3; attempt++) {
     const res = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
+      max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     })
 
