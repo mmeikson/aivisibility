@@ -100,30 +100,58 @@ export const runAnalysis = inngest.createFunction(
     await Promise.all([
       step.run('probe-openai', async () => {
         const probes = await getProbesByPlatform(reportId, 'openai')
-        await probeOpenAI(probes, (id, u) => updateProbe(id, u))
-        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: ${probes.length} probes complete`)
+        let done = 0
+        await probeOpenAI(probes, async (id, u) => {
+          await updateProbe(id, u)
+          if (u.status === 'complete' || u.status === 'failed') {
+            done++
+            await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+          }
+        })
+        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
       }),
 
       step.run('probe-anthropic', async () => {
         const probes = await getProbesByPlatform(reportId, 'anthropic')
-        await probeAnthropic(probes, (id, u) => updateProbe(id, u))
-        await emitEvent(reportId, 'probe_batch_done', `Claude: ${probes.length} probes complete`)
+        let done = 0
+        await probeAnthropic(probes, async (id, u) => {
+          await updateProbe(id, u)
+          if (u.status === 'complete' || u.status === 'failed') {
+            done++
+            await emitEvent(reportId, 'probe_progress', `Claude: ${done} of ${probes.length} responses received`)
+          }
+        })
+        await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
       }),
 
       step.run('probe-perplexity', async () => {
-        if (!process.env.PERPLEXITY_API_KEY) {
+        if (!process.env.PERPLEXITY_API_KEY && !process.env.BRIGHTDATA_API_KEY) {
           await emitEvent(reportId, 'probe_batch_done', 'Perplexity: skipped (no API key)')
           return
         }
         const probes = await getProbesByPlatform(reportId, 'perplexity')
-        await probePerplexity(probes, (id, u) => updateProbe(id, u))
-        await emitEvent(reportId, 'probe_batch_done', `Perplexity: ${probes.length} probes complete`)
+        let done = 0
+        await probePerplexity(probes, async (id, u) => {
+          await updateProbe(id, u)
+          if (u.status === 'complete' || u.status === 'failed') {
+            done++
+            await emitEvent(reportId, 'probe_progress', `Perplexity: ${done} of ${probes.length} responses received`)
+          }
+        })
+        await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
       }),
 
       step.run('probe-google', async () => {
         const probes = await getProbesByPlatform(reportId, 'google')
-        await probeGoogle(probes, (id, u) => updateProbe(id, u))
-        await emitEvent(reportId, 'probe_batch_done', `Gemini: ${probes.length} probes complete`)
+        let done = 0
+        await probeGoogle(probes, async (id, u) => {
+          await updateProbe(id, u)
+          if (u.status === 'complete' || u.status === 'failed') {
+            done++
+            await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+          }
+        })
+        await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
       }),
     ])
 

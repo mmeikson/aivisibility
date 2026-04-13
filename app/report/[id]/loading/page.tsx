@@ -153,17 +153,45 @@ export default function LoadingPage() {
                 <span className="text-sm text-[#6C6C6C]">Initializing...</span>
               </div>
             ) : (
-              events.map((e, i) => {
-                const isLast = i === events.length - 1
-                const isRunning = isLast && !isComplete
-                const isErr = e.event_type === 'error'
-                const isDone = !isRunning && !isErr
-                return (
-                  <div key={e.id} className="flex items-center gap-3 py-1.5">
+              (() => {
+                // Collapse probe_progress events: show only latest per platform,
+                // replaced by probe_batch_done once that platform finishes.
+                type Row = { key: string; message: string; state: 'running' | 'done' | 'error' }
+                const rows: Row[] = []
+                const platformLatest: Record<string, PipelineEvent> = {}
+                const platformDone = new Set<string>()
+
+                const flushPlatforms = () => {
+                  for (const pe of Object.values(platformLatest)) {
+                    rows.push({ key: pe.id, message: pe.message ?? '', state: 'running' })
+                  }
+                  Object.keys(platformLatest).forEach(k => delete platformLatest[k])
+                }
+
+                for (const e of events) {
+                  if (e.event_type === 'probe_progress') {
+                    const platform = e.message?.split(':')[0] ?? ''
+                    platformLatest[platform] = e
+                  } else if (e.event_type === 'probe_batch_done') {
+                    const platform = e.message?.split(':')[0] ?? ''
+                    platformDone.add(platform)
+                    delete platformLatest[platform]
+                    rows.push({ key: e.id, message: e.message ?? '', state: 'done' })
+                  } else {
+                    flushPlatforms()
+                    const isLast = e === events[events.length - 1]
+                    const state = e.event_type === 'error' ? 'error' : (isLast && !isComplete) ? 'running' : 'done'
+                    rows.push({ key: e.id, message: e.message ?? '', state })
+                  }
+                }
+                flushPlatforms()
+
+                return rows.map(({ key, message, state }) => (
+                  <div key={key} className="flex items-center gap-3 py-1.5">
                     <div className="shrink-0 w-4 flex items-center justify-center">
-                      {isErr ? (
+                      {state === 'error' ? (
                         <span className="text-xs text-[#b91c1c]">✕</span>
-                      ) : isDone ? (
+                      ) : state === 'done' ? (
                         <svg className="w-3.5 h-3.5 text-[#16a34a]" viewBox="0 0 12 12" fill="none">
                           <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
@@ -172,13 +200,13 @@ export default function LoadingPage() {
                       )}
                     </div>
                     <span className={`text-sm leading-snug ${
-                      isErr ? 'text-[#b91c1c]' : isDone ? 'text-[#ABABAB]' : 'text-[#141414]'
+                      state === 'error' ? 'text-[#b91c1c]' : state === 'done' ? 'text-[#ABABAB]' : 'text-[#141414]'
                     }`}>
-                      {e.message}
+                      {message}
                     </span>
                   </div>
-                )
-              })
+                ))
+              })()
             )}
           </div>
 

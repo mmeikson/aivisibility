@@ -9,6 +9,7 @@ export type PipelineEventType =
   | 'crawl_done'
   | 'inference_done'
   | 'probes_start'
+  | 'probe_progress'
   | 'probe_batch_done'
   | 'scoring_done'
   | 'complete'
