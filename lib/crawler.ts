@@ -39,7 +39,7 @@ function extractText(html: string): string {
   return words.slice(0, 2500).join(' ')
 }
 
-async function fetchPage(url: string): Promise<CrawlResult> {
+async function fetchDirect(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -50,17 +50,39 @@ async function fetchPage(url: string): Promise<CrawlResult> {
       redirect: 'follow',
       signal: AbortSignal.timeout(15_000),
     })
-
-    if (!res.ok) {
-      return { url, text: '', status: 'failed' }
-    }
-
+    if (!res.ok) return null
     const html = await res.text()
     const text = extractText(html)
-    return { url, text, status: text.length > 50 ? 'ok' : 'failed' }
+    return text.length > 200 ? text : null
   } catch {
-    return { url, text: '', status: 'failed' }
+    return null
   }
+}
+
+// Jina Reader renders JS-heavy pages and returns clean text — used as fallback
+async function fetchJina(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { Accept: 'text/plain', 'X-No-Cache': 'true' },
+      signal: AbortSignal.timeout(30_000),
+    })
+    if (!res.ok) return null
+    const text = (await res.text()).trim()
+    return text.length > 200 ? text.slice(0, 10_000) : null
+  } catch {
+    return null
+  }
+}
+
+async function fetchPage(url: string): Promise<CrawlResult> {
+  const direct = await fetchDirect(url)
+  if (direct) return { url, text: direct, status: 'ok' }
+
+  // Direct fetch returned too little — JS-rendered site, try Jina
+  const jina = await fetchJina(url)
+  if (jina) return { url, text: jina, status: 'ok' }
+
+  return { url, text: '', status: 'failed' }
 }
 
 export async function crawlSite(inputUrl: string): Promise<CrawledSite> {

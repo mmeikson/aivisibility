@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getSudoku } from 'sudoku-gen'
 
 function newGame() {
@@ -13,8 +13,9 @@ export default function SudokuGame() {
   const [inputs, setInputs] = useState<Record<number, string>>({})
   const [selected, setSelected] = useState<number | null>(null)
 
+  // sudoku-gen uses '-' for empty cells
   const given = useMemo(
-    () => new Set(puzzle.split('').flatMap((c, i) => c !== '.' ? [i] : [])),
+    () => new Set(puzzle.split('').flatMap((c, i) => c !== '-' ? [i] : [])),
     [puzzle]
   )
   const errors = new Set(
@@ -23,39 +24,44 @@ export default function SudokuGame() {
   const filled = given.size + Object.values(inputs).filter(Boolean).length
   const solved = filled === 81 && errors.size === 0
 
-  const gridRef = useRef<HTMLDivElement>(null)
+  // Use window-level keydown so keyboard works regardless of focus state
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+  const givenRef = useRef(given)
+  givenRef.current = given
 
-  const reset = useCallback(() => {
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const sel = selectedRef.current
+      if (sel === null) return
+      if (e.key >= '1' && e.key <= '9') {
+        e.preventDefault()
+        if (givenRef.current.has(sel)) return
+        setInputs(prev => ({ ...prev, [sel]: e.key }))
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault()
+        if (givenRef.current.has(sel)) return
+        setInputs(prev => { const next = { ...prev }; delete next[sel]; return next })
+      } else if (e.key === 'ArrowRight') { e.preventDefault(); setSelected(s => s !== null ? Math.min(80, s + 1) : 0) }
+      else if (e.key === 'ArrowLeft')  { e.preventDefault(); setSelected(s => s !== null ? Math.max(0, s - 1) : 0) }
+      else if (e.key === 'ArrowDown')  { e.preventDefault(); setSelected(s => s !== null ? Math.min(80, s + 9) : 0) }
+      else if (e.key === 'ArrowUp')    { e.preventDefault(); setSelected(s => s !== null ? Math.max(0, s - 9) : 0) }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  function reset() {
     setGame(newGame())
     setInputs({})
     setSelected(null)
-  }, [])
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (selected === null) return
-    if (e.key >= '1' && e.key <= '9') {
-      e.preventDefault()
-      if (given.has(selected)) return
-      setInputs(prev => ({ ...prev, [selected]: e.key }))
-    } else if (e.key === 'Backspace' || e.key === 'Delete') {
-      e.preventDefault()
-      if (given.has(selected)) return
-      setInputs(prev => { const next = { ...prev }; delete next[selected!]; return next })
-    } else if (e.key === 'ArrowRight') { e.preventDefault(); setSelected(s => s !== null ? Math.min(80, s + 1) : 0) }
-    else if (e.key === 'ArrowLeft')  { e.preventDefault(); setSelected(s => s !== null ? Math.max(0, s - 1) : 0) }
-    else if (e.key === 'ArrowDown')  { e.preventDefault(); setSelected(s => s !== null ? Math.min(80, s + 9) : 0) }
-    else if (e.key === 'ArrowUp')    { e.preventDefault(); setSelected(s => s !== null ? Math.max(0, s - 9) : 0) }
   }
 
   return (
     <div className="space-y-3">
-      {/* Grid — onKeyDown fires when any child button is focused */}
       <div
-        ref={gridRef}
         className="grid"
         style={{ gridTemplateColumns: 'repeat(9, 32px)', width: 'fit-content' }}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
       >
         {Array.from({ length: 81 }, (_, i) => {
           const row = Math.floor(i / 9)
@@ -78,7 +84,7 @@ export default function SudokuGame() {
             <button
               key={i}
               type="button"
-              onClick={() => { setSelected(i); gridRef.current?.focus() }}
+              onClick={() => setSelected(i)}
               style={{
                 width: 32, height: 32,
                 borderRight, borderBottom, borderLeft, borderTop,
