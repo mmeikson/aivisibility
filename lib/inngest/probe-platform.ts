@@ -18,30 +18,102 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ---- OpenAI (gpt-4o-search-preview, web search enabled) ----
-// ChatGPT Plus has web browsing enabled by default — this models real user experience.
-// Note: gpt-4o-search-preview does not support the temperature parameter.
+// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
+// Bright Data submits prompts to the actual ChatGPT web interface, capturing
+// the same web-search-augmented response a Plus user would see.
+// Falls back to direct gpt-4o-search-preview API if BRIGHTDATA_API_KEY is not set.
+
+const BD_DATASET_ID = 'gd_m7aof0k82r803d5bjm'
+const BD_POLL_INTERVAL_MS = 5000
+const BD_MAX_POLLS = 36 // 3 minutes max
+
+async function brightDataChatGPT(
+  prompt: string,
+  apiKey: string
+): Promise<{ text: string; citations: string[] }> {
+  const res = await fetch(
+    `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${BD_DATASET_ID}&format=json`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ url: 'https://chatgpt.com/', prompt }]),
+    }
+  )
+
+  const data = await res.json()
+
+  // Sync result
+  const first = Array.isArray(data) ? data[0] : data
+  if (res.ok && first?.answer_text) {
+    return {
+      text: first.answer_text,
+      citations: (first.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
+    }
+  }
+
+  // Async — poll for result
+  const snapshotId: string = first?.snapshot_id
+  if (!snapshotId) throw new Error(`Unexpected Bright Data response: ${JSON.stringify(first).slice(0, 200)}`)
+
+  for (let i = 0; i < BD_MAX_POLLS; i++) {
+    await sleep(BD_POLL_INTERVAL_MS)
+    const poll = await fetch(
+      `https://api.brightdata.com/datasets/v3/snapshot/${snapshotId}?format=json`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    )
+    if (poll.status === 202) continue
+    const pollData = await poll.json()
+    const result = Array.isArray(pollData) ? pollData[0] : pollData
+    return {
+      text: result.answer_text ?? '',
+      citations: (result.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
+    }
+  }
+
+  throw new Error(`Bright Data snapshot ${snapshotId} timed out`)
+}
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const bdKey = process.env.BRIGHTDATA_API_KEY
+
+  // Fallback: direct OpenAI API (less accurate — no real browser session)
+  if (!bdKey) {
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    await Promise.all(probes.map(async (probe) => {
+      const start = Date.now()
+      try {
+        const res = await client.chat.completions.create({
+          model: 'gpt-4o-search-preview',
+          messages: [{ role: 'user', content: probe.prompt_text }],
+        })
+        const content = res.choices[0]?.message?.content ?? ''
+        const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
+        await onResult(probe.id, {
+          response_text: content,
+          citations: [...new Set(urlMatches)],
+          latency_ms: Date.now() - start,
+          status: 'complete',
+        })
+      } catch (err) {
+        console.error(`OpenAI probe failed (${probe.id}):`, err)
+        await onResult(probe.id, { status: 'failed' })
+      }
+    }))
+    return
+  }
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      const res = await client.chat.completions.create({
-        model: 'gpt-4o-search-preview',
-        messages: [{ role: 'user', content: probe.prompt_text }],
-      })
-      const content = res.choices[0]?.message?.content ?? ''
-      const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
+      const { text, citations } = await brightDataChatGPT(probe.prompt_text, bdKey)
       await onResult(probe.id, {
-        response_text: content,
-        citations: [...new Set(urlMatches)],
+        response_text: text,
+        citations,
         latency_ms: Date.now() - start,
         status: 'complete',
       })
     } catch (err) {
-      console.error(`OpenAI probe failed (${probe.id}):`, err)
+      console.error(`OpenAI (Bright Data) probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
   }))
