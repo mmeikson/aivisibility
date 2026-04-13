@@ -75,7 +75,7 @@ export default function HomePage() {
               AI Visibility Audit
             </div>
             <h1 className="text-[clamp(2.4rem,6vw,4rem)] leading-[1.05] tracking-tight text-[#141414]"
-              style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}>
+              style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>
               Is your brand visible<br />
               inside AI responses?
             </h1>

@@ -72,7 +72,7 @@ export default async function ReportPage({ params }: Props) {
         </header>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
-            <h1 className="text-xl text-[#141414]" style={{ fontFamily: 'var(--font-fraunces)' }}>Analysis failed</h1>
+            <h1 className="text-xl text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)' }}>Analysis failed</h1>
             <p className="text-sm text-[#6C6C6C]">Something went wrong. Please try again.</p>
             <a href="/" className="text-sm text-[#141414] underline underline-offset-2">Start a new analysis</a>
           </div>
@@ -185,7 +185,7 @@ export default async function ReportPage({ params }: Props) {
                 />
                 <h1
                   className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
-                  style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
+                  style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
                 >
                   {report.company_name ?? new URL(report.url).hostname}
                 </h1>

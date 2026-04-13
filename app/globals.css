@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-geist-sans);
 
   --color-healthy: #16a34a;
   --color-moderate: #b45309;
@@ -52,8 +52,8 @@
 
 /* Score number typography */
 .score-number {
-  font-family: var(--font-fraunces);
-  font-variation-settings: 'opsz' 144, 'wght' 700;
+  font-family: var(--font-geist-sans);
+  font-weight: 700;
   font-feature-settings: 'tnum';
   line-height: 1;
   letter-spacing: -0.02em;

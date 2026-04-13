@@ -66,7 +66,7 @@ export default async function DashboardPage() {
             <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">Dashboard</div>
             <h1
               className="text-3xl text-[#141414] tracking-tight"
-              style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
+              style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
             >
               Your analyses
             </h1>

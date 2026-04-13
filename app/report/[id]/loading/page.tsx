@@ -122,7 +122,7 @@ export default function LoadingPage() {
             </div>
             <h1
               className="text-3xl text-[#141414] leading-tight tracking-tight"
-              style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
+              style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
             >
               Analyzing your<br />AI visibility
             </h1>
