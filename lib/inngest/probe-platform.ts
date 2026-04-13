@@ -18,8 +18,10 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ---- OpenAI (gpt-4o + web_search_preview via Responses API) ----
-// Uses the same infrastructure as ChatGPT desktop for better alignment.
+// ---- OpenAI (gpt-4o, no web search) ----
+// Tests parametric knowledge from training data — what ChatGPT "knows" about a brand.
+// Forcing web search overrides training knowledge with current search results, which
+// introduces noise and diverges from typical ChatGPT behavior on recommendation queries.
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -27,30 +29,13 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (client as any).responses.create({
+      const res = await client.chat.completions.create({
         model: 'gpt-4o',
-        tools: [{ type: 'web_search_preview' }],
-        input: probe.prompt_text,
+        messages: [{ role: 'user', content: probe.prompt_text }],
       })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const outputText = (res.output as any[])
-        .filter((b: any) => b.type === 'message')
-        .flatMap((b: any) => b.content ?? [])
-        .filter((c: any) => c.type === 'output_text')
-        .map((c: any) => c.text as string)
-        .join('\n')
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const citedUrls: string[] = (res.output as any[])
-        .flatMap((b: any) => b.content ?? [])
-        .filter((c: any) => c.type === 'output_text')
-        .flatMap((c: any) => c.annotations ?? [])
-        .filter((a: any) => a.type === 'url_citation')
-        .map((a: any) => a.url as string)
-        .filter(Boolean)
       await onResult(probe.id, {
-        response_text: outputText,
-        citations: [...new Set(citedUrls)],
+        response_text: res.choices[0]?.message?.content ?? '',
+        citations: [],
         latency_ms: Date.now() - start,
         status: 'complete',
       })
@@ -61,7 +46,10 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   }))
 }
 
-// ---- Anthropic (claude-sonnet-4-6, web search tool) ----
+// ---- Anthropic (claude-sonnet-4-6, no web search) ----
+// Tests parametric knowledge from training data — what Claude "knows" about a brand.
+// Web search would override training knowledge with current results, diverging from
+// typical Claude behavior on recommendation queries.
 
 export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -72,20 +60,15 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
       const res = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
         messages: [{ role: 'user', content: probe.prompt_text }],
-        temperature: 0,
       })
       const text = res.content
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
         .join('\n')
-      const urlMatches = text.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
-      const citedUrls = [...new Set(urlMatches)]
       await onResult(probe.id, {
         response_text: text,
-        citations: citedUrls,
+        citations: [],
         latency_ms: Date.now() - start,
         status: 'complete',
       })
