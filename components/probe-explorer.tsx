@@ -76,9 +76,9 @@ export function ProbeExplorer({ probes, companyName }: Props) {
   )
 
   return (
-    <>
+    <div>
       {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto">
+      <div className="flex gap-1">
         {activePlatforms.map((platform) => (
           <button
             key={platform}
@@ -102,7 +102,7 @@ export function ProbeExplorer({ probes, companyName }: Props) {
       </div>
 
       {/* Probe list */}
-      <div className="rounded-b-lg rounded-tr-lg border border-[#E5E2DC] bg-white overflow-hidden">
+      <div className="relative rounded-b-lg rounded-tr-lg border border-[#E5E2DC] bg-white overflow-hidden">
         {platformProbes.map((probe, i) => {
           const mentioned = probe.parsed_json?.was_mentioned
           const strength = probe.parsed_json?.recommendation_strength
@@ -148,7 +148,7 @@ export function ProbeExplorer({ probes, companyName }: Props) {
         <ProbeModal probe={selected} companyName={companyName} onClose={() => setSelected(null)} />,
         document.body
       )}
-    </>
+    </div>
   )
 }
 

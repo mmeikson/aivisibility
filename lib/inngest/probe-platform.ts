@@ -52,8 +52,10 @@ async function brightDataScrape(
   const data = await res.json()
   const first = Array.isArray(data) ? data[0] : data
 
+  console.log(`[BD] dataset=${datasetId} status=${res.status} keys=${Object.keys(first ?? {}).join(',')} answer_text_len=${first?.answer_text?.length ?? 'n/a'}`)
+
   // Sync result
-  if (res.ok && first?.answer_text) {
+  if (res.ok && first?.answer_text?.trim()) {
     return {
       text: first.answer_text,
       citations: (first.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
@@ -73,7 +75,8 @@ async function brightDataScrape(
     if (poll.status === 202) continue
     const pollData = await poll.json()
     const result = Array.isArray(pollData) ? pollData[0] : pollData
-    const text = result.answer_text ?? ''
+    console.log(`[BD] poll snapshot=${snapshotId} poll_status=${poll.status} keys=${Object.keys(result ?? {}).join(',')} answer_text_len=${result?.answer_text?.length ?? 'n/a'}`)
+    const text = result?.answer_text ?? ''
     if (!text.trim()) throw new Error(`Bright Data snapshot ${snapshotId} returned empty response`)
     return {
       text,
@@ -138,6 +141,7 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
         .join('\n')
+      if (!text.trim()) throw new Error('Anthropic returned empty response')
       await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
       console.error(`Anthropic probe failed (${probe.id}):`, err)
@@ -165,8 +169,10 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
           max_tokens: 2048,
           temperature: 0,
         })
+        const text = res.choices?.[0]?.message?.content ?? ''
+        if (!text.trim()) throw new Error('Perplexity returned empty response')
         await onResult(probe.id, {
-          response_text: res.choices?.[0]?.message?.content ?? '',
+          response_text: text,
           citations: res.citations ?? [],
           latency_ms: Date.now() - start,
           status: 'complete',
@@ -219,6 +225,7 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
       try {
         const result = await model.generateContent(probe.prompt_text)
         const text = result.response.text()
+        if (!text.trim()) throw new Error('Google returned empty response')
         const candidates = result.response.candidates ?? []
         const citedUrls: string[] = candidates.flatMap((c) => {
           const chunks = c.groundingMetadata?.groundingChunks ?? []
