@@ -32,9 +32,11 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
         model: 'gpt-4o-search-preview',
         messages: [{ role: 'user', content: probe.prompt_text }],
       })
+      const content = res.choices[0]?.message?.content ?? ''
+      const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
       await onResult(probe.id, {
-        response_text: res.choices[0]?.message?.content ?? '',
-        citations: [],
+        response_text: content,
+        citations: [...new Set(urlMatches)],
         latency_ms: Date.now() - start,
         status: 'complete',
       })
@@ -93,7 +95,7 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await (client.chat.completions.create as any)({
-        model: 'sonar-reasoning-pro',
+        model: 'sonar-pro',
         messages: [
           { role: 'user', content: probe.prompt_text },
         ],
