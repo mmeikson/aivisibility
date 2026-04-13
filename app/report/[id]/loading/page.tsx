@@ -99,7 +99,6 @@ export default function LoadingPage() {
 
   const progress = progressPercent(events)
   const isComplete = events.some((e) => e.event_type === 'complete')
-  const probesStarted = events.some((e) => e.event_type === 'probes_start')
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -114,7 +113,10 @@ export default function LoadingPage() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
-        <div className="w-full max-w-lg space-y-10">
+        <div className="w-full max-w-4xl flex gap-16 items-start">
+
+          {/* Left column — progress */}
+          <div className="flex-1 min-w-0 space-y-10">
 
           {/* Heading */}
           <div className="space-y-2 fade-up">
@@ -270,20 +272,20 @@ export default function LoadingPage() {
             </div>
           )}
 
-          {/* Sudoku — shown after probes start, hidden on mobile */}
-          {probesStarted && !isComplete && (
-            <div className="hidden sm:block fade-up">
+          </div>{/* end left column */}
+
+          {/* Right column — Sudoku, hidden on mobile */}
+          {!isComplete && (
+            <div className="hidden sm:block shrink-0 fade-up">
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
-                  While you wait
-                </span>
+                <span className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">While you wait</span>
                 <span className="flex-1 h-px bg-[#E5E2DC]" />
               </div>
               <SudokuGame />
             </div>
           )}
 
-        </div>
+        </div>{/* end two-column row */}
       </div>
 
       {/* Footer */}

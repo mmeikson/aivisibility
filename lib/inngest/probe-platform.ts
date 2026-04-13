@@ -18,6 +18,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function timeout(ms: number, label: string): Promise<never> {
+  return new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms)
+  )
+}
+
 // ---- Bright Data shared scraper ----
 // Submits prompts to real AI web interfaces, capturing responses identical to
 // what users actually see. Handles both sync and async (snapshot polling) responses.
@@ -111,6 +117,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   }
 
   const BD_RETRIES = 2
+  const BD_PROBE_TIMEOUT_MS = 75_000 // 75s per attempt — well under the 3-min poll max
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
@@ -118,11 +125,14 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     for (let attempt = 0; attempt <= BD_RETRIES; attempt++) {
       try {
         if (attempt > 0) await sleep(2000 * attempt)
-        const { text, citations } = await brightDataScrape(
-          BD_CHATGPT_ID,
-          [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
-          bdKey
-        )
+        const { text, citations } = await Promise.race([
+          brightDataScrape(
+            BD_CHATGPT_ID,
+            [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
+            bdKey
+          ),
+          timeout(BD_PROBE_TIMEOUT_MS, `ChatGPT probe ${probe.id}`),
+        ])
         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
         return
       } catch (err) {
@@ -200,11 +210,14 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      const { text, citations } = await brightDataScrape(
-        BD_PERPLEXITY_ID,
-        { input: [{ url: 'https://www.perplexity.ai', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-        bdKey
-      )
+      const { text, citations } = await Promise.race([
+        brightDataScrape(
+          BD_PERPLEXITY_ID,
+          { input: [{ url: 'https://www.perplexity.ai', prompt: probe.prompt_text, country: 'US', index: 1 }] },
+          bdKey
+        ),
+        timeout(75_000, `Perplexity probe ${probe.id}`),
+      ])
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
       console.error(`Perplexity (Bright Data) probe failed (${probe.id}):`, err)
@@ -252,11 +265,14 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      const { text, citations } = await brightDataScrape(
-        BD_GEMINI_ID,
-        { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, index: 1 }] },
-        bdKey
-      )
+      const { text, citations } = await Promise.race([
+        brightDataScrape(
+          BD_GEMINI_ID,
+          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, index: 1 }] },
+          bdKey
+        ),
+        timeout(75_000, `Gemini probe ${probe.id}`),
+      ])
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
       console.error(`Google (Bright Data) probe failed (${probe.id}):`, err)
