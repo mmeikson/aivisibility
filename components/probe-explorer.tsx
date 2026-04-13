@@ -11,6 +11,13 @@ const PLATFORM_LABELS: Record<string, string> = {
   google: 'Gemini',
 }
 
+const PLATFORM_ICONS: Record<string, string> = {
+  openai: '/logos/ChatGPT-Logo.svg',
+  anthropic: '/logos/claude-color.svg',
+  perplexity: '/logos/Perplexity--Streamline-Simple-Icons.svg',
+  google: '/logos/gemini-color.svg',
+}
+
 const ENGINE_USERS: Record<string, string> = {
   openai: '~900M users',
   anthropic: '~30M users',
@@ -35,12 +42,19 @@ export function ProbeExplorer({ probes, companyName }: Props) {
   const [selected, setSelected] = useState<Probe | null>(null)
 
   const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
+
+  // Canonical prompt order derived from all probes (de-duped, stable)
+  const promptOrder = Array.from(
+    new Map(probes.map((p) => [p.prompt_text, p])).keys()
+  )
+
   const byPlatform = Object.fromEntries(
     platforms.map((p) => [
       p,
       probes
         .filter((probe) => probe.platform === p)
-        .filter((probe, i, arr) => arr.findIndex((x) => x.prompt_text === probe.prompt_text) === i),
+        .filter((probe, i, arr) => arr.findIndex((x) => x.prompt_text === probe.prompt_text) === i)
+        .sort((a, b) => promptOrder.indexOf(a.prompt_text) - promptOrder.indexOf(b.prompt_text)),
     ])
   )
 
@@ -75,7 +89,13 @@ export function ProbeExplorer({ probes, companyName }: Props) {
                 : 'border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
             }`}
           >
-            <div className="text-xs font-mono tracking-wide">{PLATFORM_LABELS[platform] ?? platform}</div>
+            <div className="flex items-center gap-2">
+              {PLATFORM_ICONS[platform] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={PLATFORM_ICONS[platform]} alt="" width={20} height={20} className="shrink-0" />
+              )}
+              <div className="text-sm font-semibold tracking-wide">{PLATFORM_LABELS[platform] ?? platform}</div>
+            </div>
             <div className="text-[10px] text-[#ABABAB] mt-0.5">{ENGINE_USERS[platform]}</div>
           </button>
         ))}

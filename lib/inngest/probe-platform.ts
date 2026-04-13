@@ -67,8 +67,10 @@ async function brightDataScrape(
     if (poll.status === 202) continue
     const pollData = await poll.json()
     const result = Array.isArray(pollData) ? pollData[0] : pollData
+    const text = result.answer_text ?? ''
+    if (!text.trim()) throw new Error(`Bright Data snapshot ${snapshotId} returned empty response`)
     return {
-      text: result.answer_text ?? '',
+      text,
       citations: (result.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
     }
   }
@@ -108,19 +110,28 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     return
   }
 
+  const BD_RETRIES = 2
+
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
-    try {
-      const { text, citations } = await brightDataScrape(
-        BD_CHATGPT_ID,
-        [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
-        bdKey
-      )
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      console.error(`OpenAI (Bright Data) probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
+    let lastErr: unknown
+    for (let attempt = 0; attempt <= BD_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) await sleep(2000 * attempt)
+        const { text, citations } = await brightDataScrape(
+          BD_CHATGPT_ID,
+          [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
+          bdKey
+        )
+        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+        return
+      } catch (err) {
+        lastErr = err
+        console.warn(`OpenAI (Bright Data) probe attempt ${attempt + 1} failed (${probe.id}):`, err)
+      }
     }
+    console.error(`OpenAI (Bright Data) probe failed after ${BD_RETRIES + 1} attempts (${probe.id}):`, lastErr)
+    await onResult(probe.id, { status: 'failed' })
   }))
 }
 

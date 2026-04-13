@@ -11,17 +11,24 @@ async function getUserReports(userId: string): Promise<(Report & { avg_score: nu
   const db = createServiceClient()
   const { data } = await db
     .from('reports')
-    .select('*, scores(raw_score)')
+    .select('*, scores(raw_score, category)')
     .eq('user_id', userId)
     .eq('status', 'complete')
     .order('created_at', { ascending: false })
 
   if (!data) return []
 
+  const SCORE_WEIGHTS: Record<string, number> = {
+    category_association: 0.50,
+    social_proof: 0.20,
+    retrieval: 0.20,
+    entity: 0.10,
+  }
+
   return data.map((r) => {
-    const scores = (r.scores as { raw_score: number }[]) ?? []
+    const scores = (r.scores as { raw_score: number; category: string }[]) ?? []
     const avg = scores.length > 0
-      ? Math.round(scores.reduce((s, x) => s + x.raw_score, 0) / scores.length)
+      ? Math.round(scores.reduce((sum, x) => sum + x.raw_score * (SCORE_WEIGHTS[x.category] ?? 0.25), 0))
       : null
     return { ...r, avg_score: avg }
   })

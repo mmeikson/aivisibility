@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/db/client'
 import type { PipelineEvent } from '@/lib/db/types'
+import SudokuGame from '@/components/sudoku-game'
 
 const STEP_ORDER = [
   'crawl_start',
@@ -98,6 +99,7 @@ export default function LoadingPage() {
 
   const progress = progressPercent(events)
   const isComplete = events.some((e) => e.event_type === 'complete')
+  const probesStarted = events.some((e) => e.event_type === 'probes_start')
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -265,6 +267,19 @@ export default function LoadingPage() {
             <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#b91c1c]">
               {error}
               <a href="/" className="ml-2 underline">Start over</a>
+            </div>
+          )}
+
+          {/* Sudoku — shown after probes start, hidden on mobile */}
+          {probesStarted && !isComplete && (
+            <div className="hidden sm:block fade-up">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
+                  While you wait
+                </span>
+                <span className="flex-1 h-px bg-[#E5E2DC]" />
+              </div>
+              <SudokuGame />
             </div>
           )}
 

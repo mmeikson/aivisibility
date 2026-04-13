@@ -119,25 +119,17 @@ export default function HomePage() {
           {/* Platforms */}
           <div className="flex items-center gap-6 pt-2">
             <span className="text-xs text-[#ABABAB] font-mono">Probes</span>
-            {['ChatGPT', 'Claude', 'Perplexity', 'Gemini'].map((p) => (
-              <span key={p} className="text-xs text-[#6C6C6C] flex items-center gap-1.5">
-                <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-                {p}
-              </span>
-            ))}
-          </div>
-
-          {/* Stats row */}
-          <div className="pt-4 border-t border-[#E5E2DC] grid grid-cols-3 gap-6">
             {[
-              { n: '4', label: 'AI platforms' },
-              { n: '20+', label: 'Probe prompts' },
-              { n: '4', label: 'Visibility scores' },
-            ].map(({ n, label }) => (
-              <div key={label}>
-                <div className="score-number text-2xl text-[#141414]">{n}</div>
-                <div className="text-xs text-[#6C6C6C] mt-0.5">{label}</div>
-              </div>
+              { name: 'ChatGPT', icon: '/logos/ChatGPT-Logo.svg' },
+              { name: 'Claude', icon: '/logos/claude-color.svg' },
+              { name: 'Perplexity', icon: '/logos/Perplexity--Streamline-Simple-Icons.svg' },
+              { name: 'Gemini', icon: '/logos/gemini-color.svg' },
+            ].map(({ name, icon }) => (
+              <span key={name} className="text-xs text-[#6C6C6C] flex items-center gap-1.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={icon} alt="" width={14} height={14} className="shrink-0" />
+                {name}
+              </span>
             ))}
           </div>
         </div>

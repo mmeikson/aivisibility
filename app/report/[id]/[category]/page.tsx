@@ -41,12 +41,21 @@ const COMPONENT_LABELS: Record<string, string> = {
   profile_completeness: 'Profile completeness',
   wikipedia: 'Wikipedia presence',
   description_consistency: 'Description consistency',
-  // social_proof
+  // social_proof — saas
   g2_presence: 'G2 presence',
   capterra_presence: 'Capterra presence',
+  product_hunt: 'Product Hunt',
+  // social_proof — consumer
+  amazon_reviews: 'Amazon reviews',
+  trustpilot_presence: 'Trustpilot presence',
+  youtube_reviews: 'YouTube reviews',
+  // social_proof — health_wellness
+  editorial_mentions: 'Editorial mentions',
+  // social_proof — fintech
+  app_reviews: 'App store reviews',
+  // social_proof — shared
   reddit_mentions: 'Reddit mentions',
   listicle_appearances: 'Listicle appearances',
-  product_hunt: 'Product Hunt',
 }
 
 const COMPONENT_MAX: Record<string, number> = {
@@ -66,12 +75,21 @@ const COMPONENT_MAX: Record<string, number> = {
   profile_completeness: 20,
   wikipedia: 10,
   description_consistency: 40,
-  // social_proof (total 100)
+  // social_proof — saas (total 100)
   g2_presence: 25,
   capterra_presence: 15,
+  product_hunt: 15,
+  // social_proof — consumer (total 100)
+  amazon_reviews: 30,
+  trustpilot_presence: 20,
+  youtube_reviews: 5,
+  // social_proof — health_wellness (total 100)
+  editorial_mentions: 10,
+  // social_proof — fintech (total 100)
+  app_reviews: 10,
+  // social_proof — shared
   reddit_mentions: 20,
   listicle_appearances: 25,
-  product_hunt: 15,
 }
 
 const EFFORT_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 }
