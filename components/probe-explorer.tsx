@@ -11,11 +11,20 @@ const PLATFORM_LABELS: Record<string, string> = {
   google: 'Gemini',
 }
 
+const ENGINE_USERS: Record<string, string> = {
+  openai: '~900M users',
+  anthropic: '~30M users',
+  perplexity: '~15M users',
+  google: '~300M users',
+}
+
 const PROMPT_TYPE_LABELS: Record<string, string> = {
   discovery: 'Discovery',
   comparison: 'Comparison',
   job_to_be_done: 'Job-to-be-done',
 }
+
+const PROMPT_TYPES = ['discovery', 'comparison', 'job_to_be_done'] as const
 
 interface Props {
   probes: Probe[]
@@ -40,32 +49,86 @@ export function ProbeExplorer({ probes, companyName }: Props) {
 
   const platformProbes = byPlatform[activeTab] ?? []
   const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
+  const confidentCount = platformProbes.filter((p) => p.parsed_json?.recommendation_strength === 'confident').length
+
+  const byType = Object.fromEntries(
+    PROMPT_TYPES.map((type) => {
+      const typeProbes = platformProbes.filter((p) => p.prompt_type === type)
+      return [type, {
+        total: typeProbes.length,
+        mentioned: typeProbes.filter((p) => p.parsed_json?.was_mentioned).length,
+      }]
+    })
+  )
 
   return (
     <>
       {/* Tab bar */}
-      <div className="border-b border-[#E5E2DC] flex gap-0">
+      <div className="border border-[#E5E2DC] rounded-t-lg flex gap-0 overflow-x-auto bg-white">
         {activePlatforms.map((platform) => (
           <button
             key={platform}
             onClick={() => setActiveTab(platform)}
-            className={`px-4 py-2.5 text-xs font-mono tracking-wide transition-colors border-b-2 -mb-px ${
+            className={`px-4 py-3 text-left transition-colors border-b-2 shrink-0 ${
               activeTab === platform
                 ? 'border-[#141414] text-[#141414]'
                 : 'border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
             }`}
           >
-            {PLATFORM_LABELS[platform] ?? platform}
+            <div className="text-xs font-mono tracking-wide">{PLATFORM_LABELS[platform] ?? platform}</div>
+            <div className="text-[10px] text-[#ABABAB] mt-0.5">{ENGINE_USERS[platform]}</div>
           </button>
         ))}
-        <div className="flex-1 flex items-center justify-end pb-1">
-          <span className="text-xs font-mono text-[#ABABAB]">
-            {mentionedCount}/{platformProbes.length} mentioned
+      </div>
+
+      {/* Per-engine stats */}
+      <div className="border-x border-[#E5E2DC] bg-[#F9F8F6] px-5 py-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
+          <span className={
+            platformProbes.length === 0 ? 'text-[#ABABAB]' :
+            mentionedCount >= platformProbes.length * 0.6 ? 'text-[#16a34a]' :
+            mentionedCount >= platformProbes.length * 0.3 ? 'text-[#d97706]' :
+            'text-[#dc2626]'
+          }>
+            Mentioned in {mentionedCount} of {platformProbes.length} prompts
           </span>
+          {confidentCount > 0 && (
+            <>
+              <span className="text-[#CDCBC6]">·</span>
+              <span className="text-[#6C6C6C]">
+                {confidentCount} confident recommendation{confidentCount !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          {PROMPT_TYPES.filter((type) => byType[type].total > 0).map((type) => {
+            const { total, mentioned } = byType[type]
+            const pct = total > 0 ? Math.round((mentioned / total) * 100) : 0
+            return (
+              <div key={type} className="flex items-center gap-3">
+                <span className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide w-28 shrink-0">
+                  {PROMPT_TYPE_LABELS[type]}
+                </span>
+                <div className="flex-1 h-1.5 bg-[#E5E2DC] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      pct >= 60 ? 'bg-[#16a34a]' : pct >= 30 ? 'bg-[#d97706]' : 'bg-[#dc2626]'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-[#6C6C6C] shrink-0 w-10 text-right">
+                  {mentioned}/{total}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Tab body */}
+      {/* Probe list */}
       <div className="rounded-b-lg border border-t-0 border-[#E5E2DC] bg-white overflow-hidden">
         {platformProbes.map((probe, i) => {
           const mentioned = probe.parsed_json?.was_mentioned
@@ -243,7 +306,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
           {parsed?.entity_confused && (
             <>
               <span className="text-[#CDCBC6]">·</span>
-              <span className="text-[#b45309]">
+              <span className="text-[#CEAC01]">
                 ⚠ confused with {parsed.confused_with ?? 'another entity'}
               </span>
             </>

@@ -4,7 +4,7 @@ import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByRe
 import { ProbeExplorer } from '@/components/probe-explorer'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
-import type { Score, ScoreCategory } from '@/lib/db/types'
+import type { Score, Recommendation, ScoreCategory } from '@/lib/db/types'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -15,13 +15,6 @@ const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   retrieval: 'Source Retrieval',
   entity: 'Entity Recognition',
   social_proof: 'Social Proof',
-}
-
-const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
-  category_association: 'Do AI models mention you when asked about your category?',
-  retrieval: 'Are you cited as a source in AI responses?',
-  entity: 'Do AI models understand who you are?',
-  social_proof: 'Do third-party sources validate your authority?',
 }
 
 function faviconUrl(domain: string): string {
@@ -92,10 +85,6 @@ export default async function ReportPage({ params }: Props) {
   const isOwner = user && report.user_id === user.id
   const showSaveBanner = !isSaved
 
-  // Sort scores by priority (descending) for the action queue
-  const sortedByPriority = [...scores].sort((a, b) => b.priority_score - a.priority_score)
-  const topRecs = recommendations.slice(0, 3)
-
   // Overall score: weighted — category_association dominates since it directly measures
   // whether customers encounter the brand in ChatGPT/Claude responses
   const SCORE_WEIGHTS: Record<string, number> = {
@@ -111,7 +100,17 @@ export default async function ReportPage({ params }: Props) {
       }, 0))
     : 0
 
-  const probeCount = 20 // approximate
+  const probeCount = probes.filter(p => p.status === 'complete').length
+
+  // Foundation scores (entity + social_proof)
+  const foundationScores = scores.filter(s =>
+    s.category === 'entity' || s.category === 'social_proof'
+  )
+
+  // Recommendations for category_association + retrieval (engine-visible recs)
+  const engineRecs = recommendations.filter(r =>
+    r.type === 'category_association' || r.type === 'retrieval'
+  )
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -204,7 +203,7 @@ export default async function ReportPage({ params }: Props) {
 
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono">
-            <span>{probeCount}+ probes</span>
+            <span>{probeCount} probes</span>
             <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
             <span>4 platforms</span>
             <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
@@ -235,65 +234,43 @@ export default async function ReportPage({ params }: Props) {
           )}
         </div>
 
-        {/* Score cards — 2×2 grid */}
-        <div className="grid grid-cols-2 gap-4 mb-12 fade-up fade-up-1">
-          {sortedByPriority.map((score, i) => (
-            <ScoreCard key={score.id} score={score} reportId={id} delay={i} companyName={report.company_name ?? ''} probes={probes} />
-          ))}
-        </div>
+        {/* Engine-first probe view */}
+        {probes.length > 0 && (
+          <div className="space-y-0 fade-up fade-up-1 mb-12">
+            <ProbeExplorer probes={probes} companyName={report.company_name ?? ''} />
+          </div>
+        )}
 
-        {/* Priority action queue */}
-        {topRecs.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-3">
+        {/* Foundation section */}
+        {foundationScores.length > 0 && (
+          <div className="space-y-4 fade-up fade-up-2 mb-12">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Priority Actions</span>
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Foundation</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
+              <span className="text-xs font-mono text-[#ABABAB]">signals that influence all engines</span>
             </div>
 
-            <div className="space-y-2">
-              {topRecs.map((rec, i) => (
-                <div
-                  key={rec.id}
-                  className="flex items-start gap-4 rounded-lg border border-[#E5E2DC] bg-white px-5 py-4"
-                >
-                  <span className="score-number text-xl text-[#CDCBC6] shrink-0">{i + 1}</span>
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-[#141414]">{rec.title}</p>
-                      <span className="rounded-full border border-[#E5E2DC] px-2 py-0.5 text-[10px] font-mono text-[#6C6C6C] shrink-0 uppercase tracking-wide">
-                        {CATEGORY_LABELS[rec.type as ScoreCategory]?.split(' ')[0] ?? rec.type}
-                      </span>
-                    </div>
-                    {rec.why_it_matters && (
-                      <p className="text-xs text-[#6C6C6C] leading-relaxed">{rec.why_it_matters}</p>
-                    )}
-                    {rec.effort && (
-                      <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide">Effort: {rec.effort}</p>
-                    )}
-                  </div>
-                  {rec.type && (
-                    <Link
-                      href={`/report/${id}/${rec.type}`}
-                      className="shrink-0 text-xs text-[#6C6C6C] hover:text-[#141414] font-mono transition-colors"
-                    >
-                      View →
-                    </Link>
-                  )}
-                </div>
+            <div className="grid grid-cols-2 gap-4">
+              {foundationScores.map((score) => (
+                <FoundationCard key={score.id} score={score} reportId={id} />
               ))}
             </div>
           </div>
         )}
 
-        {/* Probe results */}
-        {probes.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-4 pt-8 pb-4">
+        {/* What to improve */}
+        {engineRecs.length > 0 && (
+          <div className="space-y-4 fade-up fade-up-3">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Probe Results</span>
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">What to improve</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
-              <span className="text-xs font-mono text-[#ABABAB]">{probes.filter(p => p.status === 'complete').length} probes</span>
             </div>
-            <ProbeExplorer probes={probes} companyName={report.company_name ?? ''} />
+
+            <div className="space-y-2">
+              {engineRecs.map((rec, i) => (
+                <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -310,133 +287,70 @@ export default async function ReportPage({ params }: Props) {
   )
 }
 
-function categoryDiagnostic(score: Score, companyName: string): string {
-  const cat = score.category as ScoreCategory
-  const c = score.component_scores_json
-  const name = companyName || 'This brand'
-
-  switch (cat) {
-    case 'category_association': {
-      const mentionPts = c.mention_rate ?? 0
-      const consistency = c.cross_platform ?? 0
-      const gap = c.competitor_gap ?? 0
-      const mentionStr = mentionPts >= 28 ? 'frequently mentioned' : mentionPts >= 16 ? 'sometimes mentioned' : 'rarely mentioned'
-      const gapStr = gap >= 20 ? 'competitive with peers' : gap >= 10 ? 'somewhat behind competitors' : 'significantly behind competitors in share-of-voice'
-      const consistencyStr = consistency >= 15 ? 'consistently across platforms' : 'inconsistently across platforms'
-      return `${name} is ${mentionStr} when users ask AI about its category, and appears ${consistencyStr}. It is ${gapStr}.`
-    }
-    case 'retrieval': {
-      const mention = c.mention_rate ?? 0
-      const roundup = c.roundup_presence ?? 0
-      const mentionStr = mention >= 45 ? 'frequently mentioned' : mention >= 25 ? 'sometimes mentioned' : 'rarely mentioned'
-      const roundupStr = roundup >= 20 ? 'appears in AI roundup responses' : 'is not appearing in AI roundup responses'
-      return `${name} is ${mentionStr} by AI models that use web retrieval. It ${roundupStr}, which are high-value visibility moments.`
-    }
-    case 'entity': {
-      const profile = c.profile_completeness ?? 0
-      const consistency = c.description_consistency ?? 0
-      const wiki = c.wikipedia_presence ?? 0
-      const disambiguation = c.entity_disambiguation ?? 0
-      const profileStr = profile >= 18 ? 'well-represented on key directories' : profile >= 10 ? 'partially represented on directories' : 'underrepresented on key directories'
-      const consistencyStr = consistency >= 20 ? 'consistently described across sources' : consistency >= 10 ? 'described somewhat inconsistently' : 'described inconsistently across the web'
-      const disambiguationStr = disambiguation >= 25 ? 'AI models correctly identify it' : 'AI models sometimes confuse it with other entities'
-      return `${name} is ${profileStr} like G2, LinkedIn, and Crunchbase, and ${disambiguationStr}. It is ${consistencyStr}${wiki === 0 ? ' with no Wikipedia presence detected' : ''}.`
-    }
-    case 'social_proof': {
-      const g2 = c.g2_presence ?? 0
-      const capterra = c.capterra_presence ?? 0
-      const reddit = c.reddit_mentions ?? 0
-      const listicle = c.listicle_appearances ?? 0
-      const reviewStr = (g2 + capterra) >= 25 ? 'strong review platform coverage' : (g2 + capterra) >= 12 ? 'partial review coverage' : 'limited review platform presence'
-      const communityStr = reddit >= 15 ? 'active community discussion' : reddit >= 8 ? 'some community discussion' : 'minimal community discussion'
-      const listicleStr = listicle >= 18 ? 'appears in key category listicles' : 'is underrepresented in category listicles'
-      return `${name} has ${reviewStr} and ${communityStr} on forums. It ${listicleStr} that AI models reference when recommending tools.`
-    }
-    default:
-      return ''
-  }
-}
-
-import type { Probe } from '@/lib/db/types'
-
-function mentionStats(probes: Probe[], platforms?: string[]) {
-  const relevant = probes.filter(p =>
-    p.parsed_json &&
-    p.status === 'complete' &&
-    (!platforms || platforms.includes(p.platform))
-  )
-  if (relevant.length === 0) return null
-  const mentioned = relevant.filter(p => p.parsed_json!.was_mentioned)
-  const confident = mentioned.filter(p => p.parsed_json!.recommendation_strength === 'confident')
-  return { total: relevant.length, mentioned: mentioned.length, confident: confident.length }
-}
-
-function ScoreCard({ score, reportId, delay, companyName, probes }: { score: Score; reportId: string; delay: number; companyName: string; probes: Probe[] }) {
+function FoundationCard({ score, reportId }: { score: Score; reportId: string }) {
   const cat = score.category as ScoreCategory
   const label = CATEGORY_LABELS[cat] ?? cat
   const sev = severityLabel(score.raw_score)
   const sevClass = severityClass(score.raw_score)
   const bgClass = severityBgClass(score.raw_score)
-  const diagnostic = categoryDiagnostic(score, companyName)
-
-  // For category_association: show ChatGPT + Claude mention stats + competitor gap
-  const convStats = cat === 'category_association'
-    ? mentionStats(probes, ['openai', 'anthropic'])
-    : null
-  const competitorGap = cat === 'category_association'
-    ? (score.component_scores_json?.competitor_gap ?? null)
-    : null
 
   return (
     <Link
       href={`/report/${reportId}/${score.category}`}
-      className={`fade-up fade-up-${delay + 1} group block rounded-lg border p-5 bg-white hover:border-[#141414]/20 transition-all duration-200`}
+      className="group block rounded-lg border border-[#E5E2DC] p-4 bg-white hover:border-[#141414]/20 transition-all duration-200"
     >
-      <div className="space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-xs font-mono text-[#6C6C6C] uppercase tracking-widest">{label}</p>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${bgClass} uppercase tracking-wide shrink-0`}>
-            {sev}
-          </span>
-        </div>
-        <div className={`score-number text-[3.5rem] leading-none ${sevClass}`}>
-          {score.raw_score}
-        </div>
-        <div className="h-1 bg-[#F3F2EF] rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${
-              score.raw_score >= 80 ? 'severity-bar-healthy' :
-              score.raw_score >= 60 ? 'severity-bar-moderate' :
-              score.raw_score >= 40 ? 'severity-bar-weak' : 'severity-bar-critical'
-            }`}
-            style={{ width: `${score.raw_score}%` }}
-          />
-        </div>
-        {convStats && (
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-mono">
-            <span className="text-[#6C6C6C]">ChatGPT + Claude:</span>
-            <span className={convStats.mentioned >= convStats.total * 0.6 ? 'text-[#16a34a]' : 'text-[#dc2626]'}>
-              {convStats.mentioned}/{convStats.total} mentions
-            </span>
-            {convStats.confident > 0 && (
-              <span className="text-[#ABABAB]">· {convStats.confident} confident</span>
-            )}
-            {competitorGap !== null && (
-              <span className={competitorGap >= 20 ? 'text-[#16a34a]' : competitorGap >= 10 ? 'text-[#d97706]' : 'text-[#dc2626]'}>
-                · {competitorGap >= 20 ? 'ahead of competitors' : competitorGap >= 10 ? 'behind competitors' : 'well behind competitors'}
-              </span>
-            )}
-          </div>
-        )}
-        {diagnostic && (
-          <p className="text-xs text-[#6C6C6C] leading-relaxed">{diagnostic}</p>
-        )}
-        <div className="pt-1">
-          <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
-            See recommendations <span>→</span>
-          </span>
-        </div>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <p className="text-xs font-mono text-[#6C6C6C] uppercase tracking-widest">{label}</p>
+        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${bgClass} uppercase tracking-wide shrink-0`}>
+          {sev}
+        </span>
       </div>
+      <div className={`score-number text-3xl leading-none mb-3 ${sevClass}`}>
+        {score.raw_score}
+      </div>
+      <div className="h-1 bg-[#F3F2EF] rounded-full overflow-hidden mb-3">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${
+            score.raw_score >= 80 ? 'severity-bar-healthy' :
+            score.raw_score >= 60 ? 'severity-bar-moderate' :
+            score.raw_score >= 40 ? 'severity-bar-weak' : 'severity-bar-critical'
+          }`}
+          style={{ width: `${score.raw_score}%` }}
+        />
+      </div>
+      <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
+        See recommendations <span>→</span>
+      </span>
     </Link>
+  )
+}
+
+function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: string; index: number }) {
+  return (
+    <div className="flex items-start gap-4 rounded-lg border border-[#E5E2DC] bg-white px-5 py-4">
+      <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-medium text-[#141414]">{rec.title}</p>
+          <span className="rounded-full border border-[#E5E2DC] px-2 py-0.5 text-[10px] font-mono text-[#6C6C6C] shrink-0 uppercase tracking-wide">
+            {CATEGORY_LABELS[rec.type as ScoreCategory]?.split(' ')[0] ?? rec.type}
+          </span>
+        </div>
+        {rec.why_it_matters && (
+          <p className="text-xs text-[#6C6C6C] leading-relaxed">{rec.why_it_matters}</p>
+        )}
+        {rec.effort && (
+          <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide">Effort: {rec.effort}</p>
+        )}
+      </div>
+      {rec.type && (
+        <Link
+          href={`/report/${reportId}/${rec.type}`}
+          className="shrink-0 text-xs text-[#6C6C6C] hover:text-[#141414] font-mono transition-colors"
+        >
+          View →
+        </Link>
+      )}
+    </div>
   )
 }

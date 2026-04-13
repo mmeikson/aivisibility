@@ -154,40 +154,85 @@ export default function LoadingPage() {
               </div>
             ) : (
               (() => {
-                // Collapse probe_progress events: show only latest per platform,
-                // replaced by probe_batch_done once that platform finishes.
-                type Row = { key: string; message: string; state: 'running' | 'done' | 'error' }
-                const rows: Row[] = []
-                const platformLatest: Record<string, PipelineEvent> = {}
-                const platformDone = new Set<string>()
+                const PLATFORM_NAMES = ['ChatGPT', 'Claude', 'Perplexity', 'Gemini']
 
-                const flushPlatforms = () => {
-                  for (const pe of Object.values(platformLatest)) {
-                    rows.push({ key: pe.id, message: pe.message ?? '', state: 'running' })
-                  }
-                  Object.keys(platformLatest).forEach(k => delete platformLatest[k])
-                }
+                // Pre-compute platform progress state from all events
+                const platformProgress: Record<string, number> = {}
+                const platformTotal: Record<string, number> = {}
+                const platformDone = new Set<string>()
+                const platformSkipped = new Set<string>()
+                let totalProbes = 5
 
                 for (const e of events) {
-                  if (e.event_type === 'probe_progress') {
-                    const platform = e.message?.split(':')[0] ?? ''
-                    platformLatest[platform] = e
+                  if (e.event_type === 'probes_start') {
+                    const m = e.message?.match(/Running (\d+)/)
+                    if (m) totalProbes = parseInt(m[1])
+                  } else if (e.event_type === 'probe_progress') {
+                    const platform = e.message?.split(':')[0]?.trim() ?? ''
+                    const m = e.message?.match(/(\d+) of (\d+)/)
+                    if (platform && m) {
+                      platformProgress[platform] = parseInt(m[1])
+                      platformTotal[platform] = parseInt(m[2])
+                    }
                   } else if (e.event_type === 'probe_batch_done') {
-                    const platform = e.message?.split(':')[0] ?? ''
-                    platformDone.add(platform)
-                    delete platformLatest[platform]
-                    rows.push({ key: e.id, message: e.message ?? '', state: 'done' })
-                  } else {
-                    flushPlatforms()
-                    const isLast = e === events[events.length - 1]
-                    const state = e.event_type === 'error' ? 'error' : (isLast && !isComplete) ? 'running' : 'done'
-                    rows.push({ key: e.id, message: e.message ?? '', state })
+                    const platform = e.message?.split(':')[0]?.trim() ?? ''
+                    if (PLATFORM_NAMES.includes(platform)) {
+                      if (e.message?.includes('skipped')) {
+                        platformSkipped.add(platform)
+                      } else {
+                        platformDone.add(platform)
+                        const m = e.message?.match(/all (\d+)/)
+                        if (m) {
+                          platformProgress[platform] = parseInt(m[1])
+                          platformTotal[platform] = parseInt(m[1])
+                        }
+                      }
+                    }
                   }
                 }
-                flushPlatforms()
 
-                return rows.map(({ key, message, state }) => (
-                  <div key={key} className="flex items-center gap-3 py-1.5">
+                // Build display rows
+                type Row = { key: string; message: string; state: 'pending' | 'running' | 'done' | 'error'; indent?: boolean }
+                const rows: Row[] = []
+
+                for (const e of events) {
+                  // probe_progress: never shown directly — reflected in platform rows
+                  if (e.event_type === 'probe_progress') continue
+
+                  if (e.event_type === 'probe_batch_done') {
+                    const platform = e.message?.split(':')[0]?.trim() ?? ''
+                    if (PLATFORM_NAMES.includes(platform)) continue // handled by platform block
+                    // Non-platform probe_batch_done (e.g. "Parsing responses...")
+                    const isLast = e === events[events.length - 1]
+                    rows.push({ key: e.id, message: e.message ?? '', state: isLast && !isComplete ? 'running' : 'done' })
+                    continue
+                  }
+
+                  if (e.event_type === 'probes_start') {
+                    const isLast = e === events[events.length - 1]
+                    rows.push({ key: e.id, message: e.message ?? '', state: isLast && !isComplete ? 'running' : 'done' })
+                    // Inject all platform rows immediately
+                    for (const p of PLATFORM_NAMES) {
+                      const done = platformProgress[p] ?? 0
+                      const total = platformTotal[p] ?? totalProbes
+                      if (platformSkipped.has(p)) {
+                        rows.push({ key: `p-${p}`, message: `${p}: skipped`, state: 'done', indent: true })
+                      } else if (platformDone.has(p)) {
+                        rows.push({ key: `p-${p}`, message: `${p}: all ${total} responses received`, state: 'done', indent: true })
+                      } else {
+                        rows.push({ key: `p-${p}`, message: `${p}: ${done} of ${totalProbes} responses received`, state: done > 0 ? 'running' : 'pending', indent: true })
+                      }
+                    }
+                    continue
+                  }
+
+                  const isLast = e === events[events.length - 1]
+                  const state = e.event_type === 'error' ? 'error' : (isLast && !isComplete) ? 'running' : 'done'
+                  rows.push({ key: e.id, message: e.message ?? '', state })
+                }
+
+                return rows.map(({ key, message, state, indent }) => (
+                  <div key={key} className={`flex items-center gap-3 py-1.5 ${indent ? 'pl-7' : ''}`}>
                     <div className="shrink-0 w-4 flex items-center justify-center">
                       {state === 'error' ? (
                         <span className="text-xs text-[#b91c1c]">✕</span>
@@ -195,12 +240,17 @@ export default function LoadingPage() {
                         <svg className="w-3.5 h-3.5 text-[#16a34a]" viewBox="0 0 12 12" fill="none">
                           <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
+                      ) : state === 'pending' ? (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#CDCBC6]" />
                       ) : (
                         <span className="w-1.5 h-1.5 rounded-full bg-[#141414] pulse-dot" />
                       )}
                     </div>
                     <span className={`text-sm leading-snug ${
-                      state === 'error' ? 'text-[#b91c1c]' : state === 'done' ? 'text-[#ABABAB]' : 'text-[#141414]'
+                      state === 'error' ? 'text-[#b91c1c]' :
+                      state === 'done' ? 'text-[#ABABAB]' :
+                      state === 'pending' ? 'text-[#CDCBC6]' :
+                      'text-[#141414]'
                     }`}>
                       {message}
                     </span>

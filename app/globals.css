@@ -12,7 +12,7 @@
   --font-display: var(--font-geist-sans);
 
   --color-healthy: #16a34a;
-  --color-moderate: #b45309;
+  --color-moderate: #CEAC01;
   --color-weak: #c2410c;
   --color-critical: #b91c1c;
 
@@ -61,12 +61,12 @@
 
 /* Severity color classes */
 .severity-healthy  { color: #16a34a; }
-.severity-moderate { color: #b45309; }
+.severity-moderate { color: #CEAC01; }
 .severity-weak     { color: #c2410c; }
 .severity-critical { color: #b91c1c; }
 
 .severity-bar-healthy  { background: #16a34a; }
-.severity-bar-moderate { background: #b45309; }
+.severity-bar-moderate { background: #CEAC01; }
 .severity-bar-weak     { background: #c2410c; }
 .severity-bar-critical { background: #b91c1c; }
 
