@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createReport } from '@/lib/db/queries'
 import { inngest } from '@/lib/inngest/client'
+import { getUser } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   const { url } = await req.json()
@@ -21,7 +22,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
   }
 
-  const report = await createReport(normalizedUrl)
+  const user = await getUser()
+  const report = await createReport(normalizedUrl, user?.id)
 
   // Trigger the Inngest pipeline
   await inngest.send({ name: 'report/run', data: { reportId: report.id } })

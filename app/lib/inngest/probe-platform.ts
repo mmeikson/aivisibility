@@ -18,7 +18,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ---- OpenAI (gpt-4o, no retrieval) ----
+// ---- Shared context ----
+
+function dateContext(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+// ---- OpenAI (gpt-4o-search-preview, live web search) ----
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -27,12 +33,22 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     const start = Date.now()
     try {
       const res = await client.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: probe.prompt_text }],
-        max_tokens: 1024,
+        model: 'gpt-4o-search-preview',
+        messages: [
+          { role: 'system', content: `Today is ${dateContext()}. Answer helpfully and conversationally.` },
+          { role: 'user', content: probe.prompt_text },
+        ],
+        // temperature not supported by gpt-4o-search-preview
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const annotations: any[] = (res.choices[0]?.message as any)?.annotations ?? []
+      const citedUrls: string[] = annotations
+        .filter((a) => a.type === 'url_citation')
+        .map((a) => a.url_citation?.url as string)
+        .filter(Boolean)
       await onResult(probe.id, {
         response_text: res.choices[0]?.message?.content ?? '',
+        citations: citedUrls,
         latency_ms: Date.now() - start,
         status: 'complete',
       })
@@ -43,7 +59,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   }
 }
 
-// ---- Anthropic (claude-sonnet-4-6, no retrieval) ----
+// ---- Anthropic (claude-sonnet-4-6, web search tool) ----
 
 export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -53,12 +69,24 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
     try {
       const res = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
+        max_tokens: 2048,
+        system: `Today is ${dateContext()}. Answer helpfully and conversationally.`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
         messages: [{ role: 'user', content: probe.prompt_text }],
+        temperature: 0,
       })
-      const text = res.content[0]?.type === 'text' ? res.content[0].text : ''
+      // Response may contain tool_use blocks (search calls) alongside text — collect only text
+      const text = res.content
+        .filter((block) => block.type === 'text')
+        .map((block) => (block.type === 'text' ? block.text : ''))
+        .join('\n')
+      // Extract URLs from inline markdown links in the response text
+      const urlMatches = text.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
+      const citedUrls = [...new Set(urlMatches)]
       await onResult(probe.id, {
         response_text: text,
+        citations: citedUrls,
         latency_ms: Date.now() - start,
         status: 'complete',
       })
@@ -70,6 +98,7 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
 }
 
 // ---- Perplexity (sonar-pro, live web retrieval) ----
+// Already has web search built into the model
 // Uses OpenAI-compatible API. Rate limited — add jitter between calls.
 
 export async function probePerplexity(probes: Probe[], onResult: OnProbeResult): Promise<void> {
@@ -84,8 +113,12 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await (client.chat.completions.create as any)({
         model: 'sonar-pro',
-        messages: [{ role: 'user', content: probe.prompt_text }],
-        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: `Today is ${dateContext()}. Answer helpfully and conversationally.` },
+          { role: 'user', content: probe.prompt_text },
+        ],
+        max_tokens: 2048,
+        temperature: 0,
       })
       const citedUrls: string[] = res.citations ?? []
       await onResult(probe.id, {
@@ -103,6 +136,21 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
   }
 }
 
+// Resolve Google grounding redirect URLs to their actual source URLs
+async function resolveGroundingUrls(urls: string[]): Promise<string[]> {
+  return Promise.all(
+    urls.map(async (url) => {
+      if (!url.includes('vertexaisearch.cloud.google.com')) return url
+      try {
+        const res = await fetch(url, { method: 'HEAD', redirect: 'manual' })
+        return res.headers.get('location') ?? url
+      } catch {
+        return url
+      }
+    })
+  )
+}
+
 // ---- Google (gemini-2.5-flash with Google Search grounding) ----
 
 export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Promise<void> {
@@ -111,12 +159,13 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
     model: 'gemini-2.5-flash',
     // @ts-expect-error — googleSearch tool type not yet in SDK typedefs
     tools: [{ googleSearch: {} }],
+    generationConfig: { temperature: 0 },
   })
 
   for (const probe of probes) {
     const start = Date.now()
     try {
-      const result = await model.generateContent(probe.prompt_text)
+      const result = await model.generateContent(`[Today is ${dateContext()}]\n\n${probe.prompt_text}`)
       const text = result.response.text()
       const candidates = result.response.candidates ?? []
       const citedUrls: string[] = candidates.flatMap((c) => {
@@ -125,9 +174,10 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
           chunk.web?.uri ? [chunk.web.uri] : []
         )
       })
+      const resolvedUrls = await resolveGroundingUrls(citedUrls)
       await onResult(probe.id, {
         response_text: text,
-        citations: citedUrls,
+        citations: resolvedUrls,
         latency_ms: Date.now() - start,
         status: 'complete',
       })

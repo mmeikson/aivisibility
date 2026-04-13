@@ -22,6 +22,7 @@ export interface Report {
   category: string | null
   competitors: string[]
   inference_json: InferenceResult | null
+  user_id: string | null
   created_at: string
   completed_at: string | null
 }

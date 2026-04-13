@@ -3,11 +3,11 @@ import type { Report, Probe, Score, Recommendation, PipelineEvent, PipelineEvent
 
 // ---- Reports ----
 
-export async function createReport(url: string): Promise<Report> {
+export async function createReport(url: string, userId?: string): Promise<Report> {
   const db = createServiceClient()
   const { data, error } = await db
     .from('reports')
-    .insert({ url, status: 'pending' })
+    .insert({ url, status: 'pending', ...(userId ? { user_id: userId } : {}) })
     .select()
     .single()
   if (error) throw error

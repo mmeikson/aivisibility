@@ -1,10 +1,12 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-// Browser client (anon key) — lazy singleton
-let _supabase: SupabaseClient | null = null
-export function getSupabaseClient(): SupabaseClient {
+// Browser client — uses @supabase/ssr so PKCE verifier is stored in cookies,
+// making it accessible to the server-side callback route.
+let _supabase: ReturnType<typeof createBrowserClient> | null = null
+export function getSupabaseClient() {
   if (!_supabase) {
-    _supabase = createClient(
+    _supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )

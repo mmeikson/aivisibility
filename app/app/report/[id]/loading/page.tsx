@@ -37,7 +37,7 @@ export default function LoadingPage() {
       .select('url')
       .eq('id', id)
       .single()
-      .then(({ data }) => { if (data) setUrl(data.url) })
+      .then(({ data }: { data: { url: string } | null }) => { if (data) setUrl(data.url) })
 
     // Load existing events — redirect immediately if already complete
     getSupabaseClient()
@@ -45,7 +45,7 @@ export default function LoadingPage() {
       .select('*')
       .eq('report_id', id)
       .order('created_at', { ascending: true })
-      .then(({ data }) => {
+      .then(({ data }: { data: PipelineEvent[] | null }) => {
         if (data) {
           setEvents(data)
           if (data.some((e) => e.event_type === 'complete')) {
@@ -76,9 +76,9 @@ export default function LoadingPage() {
           table: 'pipeline_events',
           filter: `report_id=eq.${id}`,
         },
-        (payload) => {
+        (payload: { new: PipelineEvent }) => {
           const event = payload.new as PipelineEvent
-          setEvents((prev) => [...prev, event])
+          setEvents((prev) => prev.some((e) => e.id === event.id) ? prev : [...prev, event])
           if (event.event_type === 'complete') {
             setTimeout(() => router.push(`/report/${id}`), 800)
           }
@@ -153,29 +153,25 @@ export default function LoadingPage() {
             ) : (
               events.map((e, i) => {
                 const isLast = i === events.length - 1
+                const isRunning = isLast && !isComplete
                 const isErr = e.event_type === 'error'
+                const isDone = !isRunning && !isErr
                 return (
-                  <div key={e.id} className="flex items-start gap-3 py-1.5 group">
-                    <div className="flex flex-col items-center mt-1 shrink-0">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          isErr
-                            ? 'bg-[#b91c1c]'
-                            : isLast && !isComplete
-                            ? 'bg-[#141414] pulse-dot'
-                            : 'bg-[#CDCBC6]'
-                        }`}
-                      />
+                  <div key={e.id} className="flex items-center gap-3 py-1.5">
+                    <div className="shrink-0 w-4 flex items-center justify-center">
+                      {isErr ? (
+                        <span className="text-xs text-[#b91c1c]">✕</span>
+                      ) : isDone ? (
+                        <svg className="w-3.5 h-3.5 text-[#16a34a]" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      ) : (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#141414] pulse-dot" />
+                      )}
                     </div>
-                    <span
-                      className={`text-sm leading-snug ${
-                        isErr
-                          ? 'text-[#b91c1c]'
-                          : isLast
-                          ? 'text-[#141414]'
-                          : 'text-[#ABABAB]'
-                      }`}
-                    >
+                    <span className={`text-sm leading-snug ${
+                      isErr ? 'text-[#b91c1c]' : isDone ? 'text-[#ABABAB]' : 'text-[#141414]'
+                    }`}>
                       {e.message}
                     </span>
                   </div>

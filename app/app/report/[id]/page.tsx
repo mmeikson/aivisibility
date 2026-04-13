@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
+import { getUser } from '@/lib/supabase/server'
+import { ShareButton } from '@/components/share-button'
 import type { Score, ScoreCategory } from '@/lib/db/types'
 
 interface Props {
@@ -20,6 +22,14 @@ const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
   retrieval: 'Are you cited as a source in AI responses?',
   entity: 'Do AI models understand who you are?',
   social_proof: 'Do third-party sources validate your authority?',
+}
+
+function faviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+}
+
+function guessCompetitorDomain(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
 }
 
 function severityLabel(score: number): string {
@@ -70,11 +80,16 @@ export default async function ReportPage({ params }: Props) {
     )
   }
 
-  const [scores, recommendations, probes] = await Promise.all([
+  const [scores, recommendations, probes, user] = await Promise.all([
     getScoresByReport(id),
     getRecommendationsByReport(id),
     getProbesByReport(id),
+    getUser(),
   ])
+
+  const isSaved = !!report.user_id
+  const isOwner = user && report.user_id === user.id
+  const showSaveBanner = !isSaved
 
   // Sort scores by priority (descending) for the action queue
   const sortedByPriority = [...scores].sort((a, b) => b.priority_score - a.priority_score)
@@ -94,8 +109,49 @@ export default async function ReportPage({ params }: Props) {
         <Link href="/" className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase hover:text-[#141414] transition-colors">
           GEO Visibility
         </Link>
-        <span className="text-xs text-[#6C6C6C]">Beta</span>
+        <div className="flex items-center gap-4">
+          {user && (
+            <Link href="/dashboard" className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors">
+              Dashboard
+            </Link>
+          )}
+          <span className="text-xs text-[#6C6C6C]">Beta</span>
+        </div>
       </header>
+
+      {/* Save banner */}
+      {showSaveBanner && (
+        <div className="border-b border-[#E5E2DC] bg-white px-6 py-3">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <p className="text-xs text-[#6C6C6C]">
+              To save and share these results, please create an account.
+            </p>
+            <Link
+              href={`/auth?save=${id}`}
+              className="shrink-0 text-xs font-medium text-[#141414] bg-[#141414] text-[#FAFAF8] px-4 py-1.5 rounded-md hover:bg-[#2a2a2a] transition-colors"
+            >
+              Save results
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Saved confirmation */}
+      {isOwner && (
+        <div className="border-b border-[#E5E2DC] bg-[#f0fdf4] px-6 py-3">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <p className="text-xs text-[#16a34a]">
+              Saved to your account.
+            </p>
+            <div className="flex items-center gap-3">
+              <ShareButton reportId={id} />
+              <Link href="/dashboard" className="text-xs font-mono text-[#16a34a] hover:text-[#141414] transition-colors">
+                View dashboard →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 px-6 py-12 max-w-4xl mx-auto w-full">
 
@@ -106,12 +162,22 @@ export default async function ReportPage({ params }: Props) {
               <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
                 AI Visibility Report
               </div>
-              <h1
-                className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
-                style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
-              >
-                {report.company_name ?? new URL(report.url).hostname}
-              </h1>
+              <div className="flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={faviconUrl(new URL(report.url).hostname)}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="rounded-md"
+                />
+                <h1
+                  className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
+                  style={{ fontFamily: 'var(--font-fraunces)', fontVariationSettings: "'opsz' 72, 'wght' 600" }}
+                >
+                  {report.company_name ?? new URL(report.url).hostname}
+                </h1>
+              </div>
               {report.category && (
                 <p className="text-sm text-[#6C6C6C]">{report.category}</p>
               )}
@@ -135,13 +201,21 @@ export default async function ReportPage({ params }: Props) {
 
           {/* Competitor chips */}
           {report.competitors.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-[#ABABAB] font-mono mr-1">vs</span>
               {report.competitors.map((c) => (
                 <span
                   key={c}
-                  className="rounded-full border border-[#E5E2DC] px-3 py-0.5 text-xs text-[#6C6C6C] bg-white"
+                  className="flex items-center gap-1.5 rounded-full border border-[#E5E2DC] pl-1 pr-3 py-0.5 text-xs text-[#6C6C6C] bg-white"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={faviconUrl(guessCompetitorDomain(c))}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="rounded-sm"
+                  />
                   {c}
                 </span>
               ))}

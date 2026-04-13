@@ -1,13 +1,22 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { getSupabaseClient } from '@/lib/db/client'
 
 export default function HomePage() {
   const router = useRouter()
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  useEffect(() => {
+    getSupabaseClient().auth.getSession().then(({ data }: { data: { session: unknown } }) => {
+      setIsLoggedIn(!!data.session)
+    })
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,7 +50,18 @@ export default function HomePage() {
         <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
           GEO Visibility
         </span>
-        <span className="text-xs text-[#6C6C6C]">Beta</span>
+        <div className="flex items-center gap-4">
+          {isLoggedIn ? (
+            <Link href="/dashboard" className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors">
+              Dashboard
+            </Link>
+          ) : (
+            <Link href="/auth" className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors">
+              Log in
+            </Link>
+          )}
+          <span className="text-xs text-[#6C6C6C]">Beta</span>
+        </div>
       </header>
 
       {/* Hero */}

@@ -36,67 +36,74 @@ export function ProbeExplorer({ probes, companyName }: Props) {
   )
 
   const activePlatforms = platforms.filter((p) => byPlatform[p].length > 0)
+  const [activeTab, setActiveTab] = useState<string>(activePlatforms[0] ?? 'openai')
+
+  const platformProbes = byPlatform[activeTab] ?? []
+  const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
 
   return (
     <>
-      <div className="space-y-6">
-        {activePlatforms.map((platform) => {
-          const platformProbes = byPlatform[platform]
-          const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
+      {/* Tab bar */}
+      <div className="border-b border-[#E5E2DC] flex gap-0">
+        {activePlatforms.map((platform) => (
+          <button
+            key={platform}
+            onClick={() => setActiveTab(platform)}
+            className={`px-4 py-2.5 text-xs font-mono tracking-wide transition-colors border-b-2 -mb-px ${
+              activeTab === platform
+                ? 'border-[#141414] text-[#141414]'
+                : 'border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
+            }`}
+          >
+            {PLATFORM_LABELS[platform] ?? platform}
+          </button>
+        ))}
+        <div className="flex-1 flex items-center justify-end pb-1">
+          <span className="text-xs font-mono text-[#ABABAB]">
+            {mentionedCount}/{platformProbes.length} mentioned
+          </span>
+        </div>
+      </div>
+
+      {/* Tab body */}
+      <div className="rounded-b-lg border border-t-0 border-[#E5E2DC] bg-white overflow-hidden">
+        {platformProbes.map((probe, i) => {
+          const mentioned = probe.parsed_json?.was_mentioned
+          const strength = probe.parsed_json?.recommendation_strength
+          const isLast = i === platformProbes.length - 1
 
           return (
-            <div key={platform}>
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-sm font-medium text-[#141414]">
-                  {PLATFORM_LABELS[platform] ?? platform}
+            <button
+              key={probe.id}
+              onClick={() => setSelected(probe)}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F2EF] transition-colors group ${
+                !isLast ? 'border-b border-[#E5E2DC]' : ''
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  probe.status !== 'complete'
+                    ? 'bg-[#CDCBC6]'
+                    : mentioned
+                    ? 'bg-[#16a34a]'
+                    : 'bg-[#E5E2DC]'
+                }`}
+              />
+              <span className="flex-1 text-xs text-[#141414] truncate">
+                {probe.prompt_text}
+              </span>
+              <span className="shrink-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide hidden sm:block">
+                {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
+              </span>
+              {strength && strength !== 'none' && (
+                <span className={`shrink-0 text-[10px] font-mono uppercase tracking-wide ${
+                  strength === 'confident' ? 'severity-healthy' : 'severity-moderate'
+                }`}>
+                  {strength}
                 </span>
-                <span className="text-xs font-mono text-[#ABABAB]">
-                  {mentionedCount}/{platformProbes.length} mentioned
-                </span>
-              </div>
-
-              <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
-                {platformProbes.map((probe, i) => {
-                  const mentioned = probe.parsed_json?.was_mentioned
-                  const strength = probe.parsed_json?.recommendation_strength
-                  const isLast = i === platformProbes.length - 1
-
-                  return (
-                    <button
-                      key={probe.id}
-                      onClick={() => setSelected(probe)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F2EF] transition-colors group ${
-                        !isLast ? 'border-b border-[#E5E2DC]' : ''
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          probe.status !== 'complete'
-                            ? 'bg-[#CDCBC6]'
-                            : mentioned
-                            ? 'bg-[#16a34a]'
-                            : 'bg-[#E5E2DC]'
-                        }`}
-                      />
-                      <span className="flex-1 text-xs text-[#141414] truncate">
-                        {probe.prompt_text}
-                      </span>
-                      <span className="shrink-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide hidden sm:block">
-                        {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
-                      </span>
-                      {strength && strength !== 'none' && (
-                        <span className={`shrink-0 text-[10px] font-mono uppercase tracking-wide ${
-                          strength === 'confident' ? 'severity-healthy' : 'severity-moderate'
-                        }`}>
-                          {strength}
-                        </span>
-                      )}
-                      <span className="shrink-0 text-[#CDCBC6] group-hover:text-[#6C6C6C] transition-colors text-xs">→</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+              )}
+              <span className="shrink-0 text-[#CDCBC6] group-hover:text-[#6C6C6C] transition-colors text-xs">→</span>
+            </button>
           )
         })}
       </div>
@@ -252,6 +259,28 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
             <p className="text-sm text-[#ABABAB] italic">No response recorded.</p>
           )}
         </div>
+
+        {/* Citations */}
+        {probe.citations && probe.citations.length > 0 && (
+          <div className="px-6 py-4 border-t border-[#E5E2DC]">
+            <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest mb-2">Sources</p>
+            <div className="space-y-1">
+              {probe.citations.map((url, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-[10px] font-mono text-[#CDCBC6] mt-0.5 shrink-0">{i + 1}</span>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#6C6C6C] hover:text-[#141414] truncate transition-colors"
+                  >
+                    {url.replace(/^https?:\/\//, '').replace(/\?.*$/, '')}
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-[#E5E2DC] flex items-center justify-between">
