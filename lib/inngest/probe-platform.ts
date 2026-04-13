@@ -18,10 +18,9 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ---- OpenAI (gpt-4o, no web search) ----
-// Tests parametric knowledge from training data — what ChatGPT "knows" about a brand.
-// Forcing web search overrides training knowledge with current search results, which
-// introduces noise and diverges from typical ChatGPT behavior on recommendation queries.
+// ---- OpenAI (gpt-4o-search-preview, web search enabled) ----
+// ChatGPT Plus has web browsing enabled by default — this models real user experience.
+// Note: gpt-4o-search-preview does not support the temperature parameter.
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -30,7 +29,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     const start = Date.now()
     try {
       const res = await client.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-search-preview',
         messages: [{ role: 'user', content: probe.prompt_text }],
       })
       await onResult(probe.id, {
