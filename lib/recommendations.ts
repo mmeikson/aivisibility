@@ -78,22 +78,28 @@ For the copy asset:
 
 Return ONLY valid JSON, no explanation.`
 
-  const res = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    messages: [{ role: 'user', content: prompt }],
-  })
-
-  const text = res.content[0]?.type === 'text' ? res.content[0].text : '[]'
-  const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
   type RawRec = { title: string; why_it_matters: string; actions: string[]; copy_asset: string }
-  let raw: RawRec[]
-  try {
-    raw = JSON.parse(jsonStr) as RawRec[]
-  } catch {
-    console.error('Failed to parse recommendations JSON for', category, jsonStr.slice(0, 200))
-    return []
+  let raw: RawRec[] | null = null
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const text = res.content[0]?.type === 'text' ? res.content[0].text : '[]'
+    const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+    try {
+      raw = JSON.parse(jsonStr) as RawRec[]
+      break
+    } catch {
+      console.error(`Recommendations JSON parse failed (attempt ${attempt}/3) for ${category}:`, jsonStr.slice(0, 300))
+      if (attempt === 3) return []
+    }
   }
+
+  if (!raw) return []
 
   return raw.map((r) => ({
     title: r.title,
