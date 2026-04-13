@@ -3,6 +3,17 @@ import type { Probe } from '@/lib/db/types'
 // Category Association Score (0–100)
 // Measures how reliably the brand surfaces in discovery prompts across platforms.
 
+// Platform weights reflect approximate real-world market share among AI assistant users.
+// ChatGPT dominates, so visibility there counts most toward the score.
+const PLATFORM_WEIGHTS: Record<string, number> = {
+  openai: 0.60,
+  anthropic: 0.20,
+  google: 0.12,
+  perplexity: 0.08,
+}
+
+const SCORED_PLATFORMS = Object.keys(PLATFORM_WEIGHTS)
+
 export function scoreCategoryAssociation(
   probes: Probe[],
   competitors: string[]
@@ -13,12 +24,24 @@ export function scoreCategoryAssociation(
     return { raw_score: 0, component_scores_json: {} }
   }
 
-  // Component 1: Discovery prompt mention rate (40 pts)
-  const mentioned = discovery.filter((p) => p.parsed_json!.was_mentioned)
-  const mentionRate = mentioned.length / discovery.length
+  // Component 1: Weighted mention rate (40 pts)
+  // Each platform's mention rate is weighted by its market share, then normalized
+  // for any platforms with no probes.
+  let weightedMentionRate = 0
+  let totalWeight = 0
+  for (const plt of SCORED_PLATFORMS) {
+    const pltProbes = discovery.filter((p) => p.platform === plt)
+    if (pltProbes.length === 0) continue
+    const rate = pltProbes.filter((p) => p.parsed_json!.was_mentioned).length / pltProbes.length
+    const w = PLATFORM_WEIGHTS[plt]
+    weightedMentionRate += rate * w
+    totalWeight += w
+  }
+  const mentionRate = totalWeight > 0 ? weightedMentionRate / totalWeight : 0
   const mentionScore = Math.round(mentionRate * 40)
 
   // Component 2: Average list position when mentioned (20 pts)
+  const mentioned = discovery.filter((p) => p.parsed_json!.was_mentioned)
   const listPositions = mentioned.flatMap((p) => p.parsed_json!.mention_positions)
   let positionScore = 0
   if (listPositions.length > 0) {
@@ -56,15 +79,15 @@ export function scoreCategoryAssociation(
     }
   }
 
-  // Component 4: Cross-platform consistency (20 pts)
-  const platforms = ['openai', 'anthropic', 'perplexity', 'google']
-  const platformsWithMention = platforms.filter((plt) =>
-    discovery.some((p) => p.platform === plt && p.parsed_json!.was_mentioned)
-  ).length
-  const platformScore = platformsWithMention === 4 ? 20
-    : platformsWithMention === 3 ? 15
-    : platformsWithMention === 2 ? 8
-    : 0
+  // Component 4: Weighted platform coverage (20 pts)
+  // Each platform contributes its weight × 20 pts if the brand was mentioned there.
+  // A brand mentioned only on ChatGPT scores 12pts; mentioned everywhere scores 20pts.
+  let platformScore = 0
+  for (const plt of SCORED_PLATFORMS) {
+    const hasMention = discovery.some((p) => p.platform === plt && p.parsed_json!.was_mentioned)
+    if (hasMention) platformScore += PLATFORM_WEIGHTS[plt] * 20
+  }
+  platformScore = Math.round(platformScore)
 
   const raw_score = Math.min(100, mentionScore + positionScore + competitorGapScore + platformScore)
 
