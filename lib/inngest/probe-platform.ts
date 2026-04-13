@@ -24,7 +24,8 @@ function dateContext(): string {
   return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
-// ---- OpenAI (gpt-4o-search-preview, live web search) ----
+// ---- OpenAI (gpt-4o + web_search_preview via Responses API) ----
+// Uses the same infrastructure as ChatGPT desktop for better alignment.
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -32,23 +33,30 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      const res = await client.chat.completions.create({
-        model: 'gpt-4o-search-preview',
-        messages: [
-          { role: 'system', content: `Today is ${dateContext()}. Answer helpfully and conversationally.` },
-          { role: 'user', content: probe.prompt_text },
-        ],
-        // temperature not supported by gpt-4o-search-preview
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (client as any).responses.create({
+        model: 'gpt-4o',
+        tools: [{ type: 'web_search_preview' }],
+        input: probe.prompt_text,
       })
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const annotations: any[] = (res.choices[0]?.message as any)?.annotations ?? []
-      const citedUrls: string[] = annotations
-        .filter((a) => a.type === 'url_citation')
-        .map((a) => a.url_citation?.url as string)
+      const outputText = (res.output as any[])
+        .filter((b: any) => b.type === 'message')
+        .flatMap((b: any) => b.content ?? [])
+        .filter((c: any) => c.type === 'output_text')
+        .map((c: any) => c.text as string)
+        .join('\n')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const citedUrls: string[] = (res.output as any[])
+        .flatMap((b: any) => b.content ?? [])
+        .filter((c: any) => c.type === 'output_text')
+        .flatMap((c: any) => c.annotations ?? [])
+        .filter((a: any) => a.type === 'url_citation')
+        .map((a: any) => a.url as string)
         .filter(Boolean)
       await onResult(probe.id, {
-        response_text: res.choices[0]?.message?.content ?? '',
-        citations: citedUrls,
+        response_text: outputText,
+        citations: [...new Set(citedUrls)],
         latency_ms: Date.now() - start,
         status: 'complete',
       })
