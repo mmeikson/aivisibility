@@ -18,12 +18,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ---- Shared context ----
-
-function dateContext(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-}
-
 // ---- OpenAI (gpt-4o + web_search_preview via Responses API) ----
 // Uses the same infrastructure as ChatGPT desktop for better alignment.
 
@@ -78,7 +72,6 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
       const res = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
-        system: `Today is ${dateContext()}. Answer helpfully and conversationally.`,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         tools: [{ type: 'web_search_20250305', name: 'web_search' } as any],
         messages: [{ role: 'user', content: probe.prompt_text }],
@@ -120,7 +113,6 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
       const res = await (client.chat.completions.create as any)({
         model: 'sonar-pro',
         messages: [
-          { role: 'system', content: `Today is ${dateContext()}. Answer helpfully and conversationally.` },
           { role: 'user', content: probe.prompt_text },
         ],
         max_tokens: 2048,
@@ -157,12 +149,12 @@ async function resolveGroundingUrls(urls: string[]): Promise<string[]> {
   )
 }
 
-// ---- Google (gemini-2.5-flash with Google Search grounding) ----
+// ---- Google (gemini-2.5-pro with Google Search grounding) ----
 
 export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const genai = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!)
   const model = genai.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.5-pro',
     // @ts-expect-error — googleSearch tool type not yet in SDK typedefs
     tools: [{ googleSearch: {} }],
     generationConfig: { temperature: 0 },
@@ -171,7 +163,7 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
-      const result = await model.generateContent(`[Today is ${dateContext()}]\n\n${probe.prompt_text}`)
+      const result = await model.generateContent(probe.prompt_text)
       const text = result.response.text()
       const candidates = result.response.candidates ?? []
       const citedUrls: string[] = candidates.flatMap((c) => {
