@@ -111,7 +111,7 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await (client.chat.completions.create as any)({
-        model: 'sonar-pro',
+        model: 'sonar-reasoning-pro',
         messages: [
           { role: 'user', content: probe.prompt_text },
         ],
