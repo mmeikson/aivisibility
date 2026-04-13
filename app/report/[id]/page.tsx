@@ -96,9 +96,19 @@ export default async function ReportPage({ params }: Props) {
   const sortedByPriority = [...scores].sort((a, b) => b.priority_score - a.priority_score)
   const topRecs = recommendations.slice(0, 3)
 
-  // Overall score: average of all 4
+  // Overall score: weighted — category_association dominates since it directly measures
+  // whether customers encounter the brand in ChatGPT/Claude responses
+  const SCORE_WEIGHTS: Record<string, number> = {
+    category_association: 0.50,
+    social_proof: 0.20,
+    retrieval: 0.20,
+    entity: 0.10,
+  }
   const overallScore = scores.length > 0
-    ? Math.round(scores.reduce((sum, s) => sum + s.raw_score, 0) / scores.length)
+    ? Math.round(scores.reduce((sum, s) => {
+        const w = SCORE_WEIGHTS[s.category] ?? 0.25
+        return sum + s.raw_score * w
+      }, 0))
     : 0
 
   const probeCount = 20 // approximate
@@ -228,7 +238,7 @@ export default async function ReportPage({ params }: Props) {
         {/* Score cards — 2×2 grid */}
         <div className="grid grid-cols-2 gap-4 mb-12 fade-up fade-up-1">
           {sortedByPriority.map((score, i) => (
-            <ScoreCard key={score.id} score={score} reportId={id} delay={i} companyName={report.company_name ?? ''} />
+            <ScoreCard key={score.id} score={score} reportId={id} delay={i} companyName={report.company_name ?? ''} probes={probes} />
           ))}
         </div>
 
@@ -347,13 +357,32 @@ function categoryDiagnostic(score: Score, companyName: string): string {
   }
 }
 
-function ScoreCard({ score, reportId, delay, companyName }: { score: Score; reportId: string; delay: number; companyName: string }) {
+import type { Probe } from '@/lib/db/types'
+
+function mentionStats(probes: Probe[], platforms?: string[]) {
+  const relevant = probes.filter(p =>
+    p.parsed_json &&
+    p.status === 'complete' &&
+    (!platforms || platforms.includes(p.platform))
+  )
+  if (relevant.length === 0) return null
+  const mentioned = relevant.filter(p => p.parsed_json!.was_mentioned)
+  const confident = mentioned.filter(p => p.parsed_json!.recommendation_strength === 'confident')
+  return { total: relevant.length, mentioned: mentioned.length, confident: confident.length }
+}
+
+function ScoreCard({ score, reportId, delay, companyName, probes }: { score: Score; reportId: string; delay: number; companyName: string; probes: Probe[] }) {
   const cat = score.category as ScoreCategory
   const label = CATEGORY_LABELS[cat] ?? cat
   const sev = severityLabel(score.raw_score)
   const sevClass = severityClass(score.raw_score)
   const bgClass = severityBgClass(score.raw_score)
   const diagnostic = categoryDiagnostic(score, companyName)
+
+  // For category_association: show ChatGPT + Claude mention stats specifically
+  const convStats = cat === 'category_association'
+    ? mentionStats(probes, ['openai', 'anthropic'])
+    : null
 
   return (
     <Link
@@ -380,6 +409,19 @@ function ScoreCard({ score, reportId, delay, companyName }: { score: Score; repo
             style={{ width: `${score.raw_score}%` }}
           />
         </div>
+        {convStats && (
+          <div className="flex gap-3 text-[11px] font-mono">
+            <span className="text-[#6C6C6C]">
+              ChatGPT + Claude:
+            </span>
+            <span className={convStats.mentioned >= convStats.total * 0.6 ? 'text-[#16a34a]' : 'text-[#dc2626]'}>
+              {convStats.mentioned}/{convStats.total} mentions
+            </span>
+            {convStats.confident > 0 && (
+              <span className="text-[#ABABAB]">· {convStats.confident} confident</span>
+            )}
+          </div>
+        )}
         {diagnostic && (
           <p className="text-xs text-[#6C6C6C] leading-relaxed">{diagnostic}</p>
         )}

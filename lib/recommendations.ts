@@ -47,6 +47,10 @@ export async function generateRecommendations(
 
   const prompt = `You are generating actionable recommendations for a brand's AI visibility audit.
 
+The core user goal: get their brand mentioned when customers ask ChatGPT, Claude, or Perplexity about their category.
+
+How LLMs decide what to recommend: They draw on their training data (web content, reviews, comparisons) and — for search-grounded models — live retrieval of authoritative sources. A brand gets recommended when: (1) it appears frequently and consistently across trusted third-party sources the model was trained on, (2) it's described in terms that match how users phrase their questions, (3) review platforms and community discussions reflect real user satisfaction.
+
 Company: ${inference.company_name}
 Category: ${inference.category}
 Use case: ${inference.primary_use_case}
@@ -56,21 +60,21 @@ Score category: ${category.replace(/_/g, ' ')}
 Score: ${score.raw_score}/100 (${severity})
 Weak components: ${weakComponents.join(', ') || 'none identified'}
 
-Generate 2–3 specific, actionable recommendations for this category. Return a JSON array:
+Generate 2–3 specific, actionable recommendations. For each, the "why_it_matters" must explain the direct connection to AI recommendation behavior — not general SEO or marketing outcomes. Return a JSON array:
 [{
   "title": "action-oriented title, max 8 words",
-  "why_it_matters": "2-3 sentences specific to this company explaining the impact",
+  "why_it_matters": "2-3 sentences: what this company's specific gap is and exactly how fixing it causes AI models to mention them more often",
   "actions": ["step 1", "step 2", "step 3", "step 4"],
-  "copy_asset": "ready-to-use text asset (description, content brief, email template, etc.)"
+  "copy_asset": "ready-to-use text asset"
 }]
 
-IMPORTANT for action steps: every action must make clear WHERE the change is made. If it's on the company's own website, prefix with "On your website:". If it's on a third-party platform, name the platform explicitly (e.g. "On LinkedIn:", "On G2:", "In Google Search Console:"). Never write steps that leave it ambiguous where the work happens.
+IMPORTANT for action steps: prefix every step with where the work happens — "On your website:", "On G2:", "On LinkedIn:", etc. Never leave it ambiguous.
 
 For the copy asset:
-- entity category: write a canonical one-sentence company description optimized for consistency across G2, LinkedIn, Crunchbase, Capterra
-- category_association category: write a content outline for a comparison page vs their top competitor
-- retrieval category: write a content brief for a high-priority page targeting a key discovery query
-- social_proof category: write a short review request email template for customers
+- entity: canonical one-sentence company description for consistent use across G2, LinkedIn, Crunchbase, Capterra
+- category_association: content outline for a comparison page vs their top competitor (these pages are heavily indexed by AI models)
+- retrieval: content brief for a page targeting a key discovery query your customers ask AI assistants
+- social_proof: short review request email for customers (more recent G2/Capterra reviews directly feed AI training data)
 
 Return ONLY valid JSON, no explanation.`
 
