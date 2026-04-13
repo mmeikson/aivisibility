@@ -17,6 +17,94 @@ const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   social_proof: 'Social Proof',
 }
 
+function buildSummary(
+  companyName: string,
+  category: string,
+  overallScore: number,
+  scores: Score[]
+): string {
+  // Sentence 1 — overall standing
+  let s1: string
+  const catScore = scores.find(s => s.category === 'category_association')?.raw_score ?? 0
+  if (overallScore >= 80) {
+    s1 = `${companyName} is well covered by AI engines and consistently surfaces in ${category} queries.`
+  } else if (overallScore >= 65) {
+    const strong = catScore >= 70 ? 'solid category association' : 'growing presence'
+    s1 = `${companyName} has ${strong} in the ${category} space, though there are meaningful gaps to close.`
+  } else if (overallScore >= 45) {
+    s1 = `${companyName} has moderate AI visibility in the ${category} category — AI engines mention it in some relevant queries but miss it in others.`
+  } else {
+    s1 = `${companyName} has limited AI visibility in the ${category} space, and AI engines rarely surface it in discovery or recommendation queries.`
+  }
+
+  // Sentence 2 — top opportunity (lowest-scoring weighted component)
+  const COMPONENT_ACTIONS: Record<string, string> = {
+    // category_association
+    mention_rate: 'building more AI-indexed content in your category',
+    discovery_mention_rate: 'building more AI-indexed content in your category',
+    position: 'working toward top-of-list placement in AI recommendations',
+    avg_mention_position: 'working toward top-of-list placement in AI recommendations',
+    competitor_gap: 'closing the visibility gap against leading competitors',
+    cross_platform: 'improving consistency across all AI platforms',
+    cross_platform_consistency: 'improving consistency across all AI platforms',
+    // retrieval
+    roundup_presence: 'earning placement in category comparison and roundup articles',
+    citation_rate: 'making your site a citable source for AI retrieval engines',
+    direct_url_citation: 'making your site a citable source for AI retrieval engines',
+    // entity
+    schema_markup: 'adding structured data markup to your website',
+    wikipedia: 'establishing a Wikipedia presence',
+    profile_completeness: 'completing your brand profiles across key platforms',
+    description_consistency: 'aligning how your brand is described across the web',
+    description_specificity: 'sharpening your brand description across the web',
+    // social proof
+    g2_presence: 'building your G2 review profile',
+    capterra_presence: 'establishing a Capterra presence',
+    product_hunt: 'launching on Product Hunt',
+    amazon_reviews: 'growing your Amazon review profile',
+    trustpilot_presence: 'building Trustpilot reviews',
+    reddit_mentions: 'building community presence on Reddit',
+    listicle_appearances: 'getting featured in best-of category articles',
+    editorial_mentions: 'earning coverage in editorial review publications',
+    youtube_reviews: 'getting your product reviewed on YouTube',
+    app_reviews: 'building your app store review presence',
+  }
+
+  // Find the component with the worst score relative to its max (using COMPONENT_MAX from the category page)
+  const COMPONENT_MAX: Record<string, number> = {
+    mention_rate: 30, discovery_mention_rate: 40, position: 20, avg_mention_position: 20,
+    competitor_gap: 20, cross_platform: 20, cross_platform_consistency: 20,
+    roundup_presence: 30, citation_rate: 10, direct_url_citation: 30,
+    schema_markup: 20, wikipedia: 10, profile_completeness: 20,
+    description_consistency: 40, description_specificity: 10,
+    g2_presence: 25, capterra_presence: 15, product_hunt: 15,
+    amazon_reviews: 30, trustpilot_presence: 20, reddit_mentions: 20,
+    listicle_appearances: 25, editorial_mentions: 10, youtube_reviews: 5,
+    app_reviews: 10,
+  }
+
+  let worstKey = ''
+  let worstGap = -1
+  for (const score of scores) {
+    for (const [key, pts] of Object.entries(score.component_scores_json)) {
+      const max = COMPONENT_MAX[key]
+      if (!max) continue
+      const gap = max - pts
+      if (gap > worstGap) { worstGap = gap; worstKey = key }
+    }
+  }
+
+  const action = worstKey && COMPONENT_ACTIONS[worstKey]
+    ? `consider ${COMPONENT_ACTIONS[worstKey]}`
+    : 'focus on expanding your brand footprint across AI-indexed sources'
+
+  const s2 = overallScore >= 80
+    ? `To further strengthen your position, ${action}.`
+    : `Your most impactful near-term opportunity is to ${action}.`
+
+  return `${s1} ${s2}`
+}
+
 function faviconUrl(domain: string): string {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
 }
@@ -168,37 +256,29 @@ export default async function ReportPage({ params }: Props) {
 
         {/* Report header */}
         <div className="space-y-4 mb-12 fade-up">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
-                AI Visibility Report
-              </div>
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={faviconUrl(new URL(report.url).hostname)}
-                  alt=""
-                  width={28}
-                  height={28}
-                  className="rounded-md"
-                />
-                <h1
-                  className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
-                  style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
-                >
-                  {report.company_name ?? new URL(report.url).hostname}
-                </h1>
-              </div>
-              {report.category && (
-                <p className="text-sm text-[#6C6C6C]">{report.category}</p>
-              )}
+          <div className="space-y-1.5">
+            <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
+              AI Visibility Report
             </div>
-
-            {/* Overall score */}
-            <div className="shrink-0 text-right">
-              <div className={`score-number text-5xl ${severityClass(overallScore)}`}>{overallScore}</div>
-              <div className="text-xs text-[#ABABAB] mt-0.5">{severityLabel(overallScore)} overall</div>
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={faviconUrl(new URL(report.url).hostname)}
+                alt=""
+                width={28}
+                height={28}
+                className="rounded-md"
+              />
+              <h1
+                className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
+                style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
+              >
+                {report.company_name ?? new URL(report.url).hostname}
+              </h1>
             </div>
+            {report.category && (
+              <p className="text-sm text-[#6C6C6C]">{report.category}</p>
+            )}
           </div>
 
           {/* Meta row */}
@@ -232,11 +312,31 @@ export default async function ReportPage({ params }: Props) {
               ))}
             </div>
           )}
+
+          {/* Summary + score row */}
+          {scores.length > 0 && report.category && (
+            <div className="flex items-center gap-8 pt-2 border-t border-[#E5E2DC]">
+              <p
+                className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
+                style={{ fontFamily: 'var(--font-geist-sans)' }}
+              >
+                {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
+              </p>
+              <div className="shrink-0 text-right">
+                <div className={`score-number text-5xl ${severityClass(overallScore)}`}>{overallScore}</div>
+                <div className="text-xs text-[#ABABAB] mt-0.5">{severityLabel(overallScore)} overall</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Engine-first probe view */}
         {probes.length > 0 && (
-          <div className="space-y-0 fade-up fade-up-1 mb-12">
+          <div className="space-y-4 fade-up fade-up-1 mb-12">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Prompt Analysis</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
             <ProbeExplorer probes={probes} companyName={report.company_name ?? ''} />
           </div>
         )}

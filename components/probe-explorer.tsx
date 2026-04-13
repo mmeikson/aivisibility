@@ -244,7 +244,8 @@ function renderResponse(text: string, companyName: string): string {
       if (listType) { out.push(`</${listType}>`); listType = '' }
       // Lines starting with an emoji get extra top spacing (Bright Data uses these as section headers)
       const startsWithEmoji = /^\p{Emoji}/u.test(t)
-      out.push(startsWithEmoji ? `<p class="mt-3 font-medium">${t}</p>` : `<p>${t}</p>`)
+      const cls = startsWithEmoji ? 'class="mt-3 font-medium"' : ''
+      out.push(`<p ${cls}>${t}</p>`)
     }
   }
   if (listType) out.push(`</${listType}>`)

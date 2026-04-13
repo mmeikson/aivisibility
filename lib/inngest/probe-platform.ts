@@ -85,43 +85,43 @@ async function brightDataScrape(
 }
 
 // ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// Falls back to gpt-4o-search-preview API if BRIGHTDATA_API_KEY is not set.
+// Falls back to gpt-4o-search-preview API if Bright Data is unavailable or fails.
+
+async function probeOpenAIApi(probe: Probe, onResult: OnProbeResult): Promise<void> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const start = Date.now()
+  try {
+    const res = await client.chat.completions.create({
+      model: 'gpt-4o-search-preview',
+      messages: [{ role: 'user', content: probe.prompt_text }],
+    })
+    const content = res.choices[0]?.message?.content ?? ''
+    const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
+    await onResult(probe.id, {
+      response_text: content,
+      citations: [...new Set(urlMatches)],
+      latency_ms: Date.now() - start,
+      status: 'complete',
+    })
+  } catch (err) {
+    console.error(`OpenAI API probe failed (${probe.id}):`, err)
+    await onResult(probe.id, { status: 'failed' })
+  }
+}
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const bdKey = process.env.BRIGHTDATA_API_KEY
 
-  // Fallback: direct OpenAI API (less accurate — no real browser session)
   if (!bdKey) {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-    await Promise.all(probes.map(async (probe) => {
-      const start = Date.now()
-      try {
-        const res = await client.chat.completions.create({
-          model: 'gpt-4o-search-preview',
-          messages: [{ role: 'user', content: probe.prompt_text }],
-        })
-        const content = res.choices[0]?.message?.content ?? ''
-        const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
-        await onResult(probe.id, {
-          response_text: content,
-          citations: [...new Set(urlMatches)],
-          latency_ms: Date.now() - start,
-          status: 'complete',
-        })
-      } catch (err) {
-        console.error(`OpenAI probe failed (${probe.id}):`, err)
-        await onResult(probe.id, { status: 'failed' })
-      }
-    }))
+    await Promise.all(probes.map((probe) => probeOpenAIApi(probe, onResult)))
     return
   }
 
   const BD_RETRIES = 2
-  const BD_PROBE_TIMEOUT_MS = 75_000 // 75s per attempt — well under the 3-min poll max
+  const BD_PROBE_TIMEOUT_MS = 75_000
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
-    let lastErr: unknown
     for (let attempt = 0; attempt <= BD_RETRIES; attempt++) {
       try {
         if (attempt > 0) await sleep(2000 * attempt)
@@ -136,12 +136,12 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
         return
       } catch (err) {
-        lastErr = err
         console.warn(`OpenAI (Bright Data) probe attempt ${attempt + 1} failed (${probe.id}):`, err)
       }
     }
-    console.error(`OpenAI (Bright Data) probe failed after ${BD_RETRIES + 1} attempts (${probe.id}):`, lastErr)
-    await onResult(probe.id, { status: 'failed' })
+    // Bright Data exhausted — fall back to direct API rather than losing the data point
+    console.warn(`OpenAI (Bright Data) failed after ${BD_RETRIES + 1} attempts, falling back to API (${probe.id})`)
+    await probeOpenAIApi(probe, onResult)
   }))
 }
 
