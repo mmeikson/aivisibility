@@ -379,9 +379,12 @@ function ScoreCard({ score, reportId, delay, companyName, probes }: { score: Sco
   const bgClass = severityBgClass(score.raw_score)
   const diagnostic = categoryDiagnostic(score, companyName)
 
-  // For category_association: show ChatGPT + Claude mention stats specifically
+  // For category_association: show ChatGPT + Claude mention stats + competitor gap
   const convStats = cat === 'category_association'
     ? mentionStats(probes, ['openai', 'anthropic'])
+    : null
+  const competitorGap = cat === 'category_association'
+    ? (score.component_scores_json?.competitor_gap ?? null)
     : null
 
   return (
@@ -410,15 +413,18 @@ function ScoreCard({ score, reportId, delay, companyName, probes }: { score: Sco
           />
         </div>
         {convStats && (
-          <div className="flex gap-3 text-[11px] font-mono">
-            <span className="text-[#6C6C6C]">
-              ChatGPT + Claude:
-            </span>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-mono">
+            <span className="text-[#6C6C6C]">ChatGPT + Claude:</span>
             <span className={convStats.mentioned >= convStats.total * 0.6 ? 'text-[#16a34a]' : 'text-[#dc2626]'}>
               {convStats.mentioned}/{convStats.total} mentions
             </span>
             {convStats.confident > 0 && (
               <span className="text-[#ABABAB]">· {convStats.confident} confident</span>
+            )}
+            {competitorGap !== null && (
+              <span className={competitorGap >= 20 ? 'text-[#16a34a]' : competitorGap >= 10 ? 'text-[#d97706]' : 'text-[#dc2626]'}>
+                · {competitorGap >= 20 ? 'ahead of competitors' : competitorGap >= 10 ? 'behind competitors' : 'well behind competitors'}
+              </span>
             )}
           </div>
         )}
