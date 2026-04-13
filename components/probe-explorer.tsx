@@ -140,13 +140,13 @@ function renderResponse(text: string, companyName: string): string {
     } else if (t.startsWith('# ')) {
       if (listType) { out.push(`</${listType}>`); listType = '' }
       out.push(`<p class="font-semibold text-[#141414] mt-3 mb-0.5">${t.slice(2)}</p>`)
-    } else if (t.match(/^[-*] /)) {
+    } else if (t.match(/^[-*] /) || t.match(/^[•▸‣] ?/)) {
       if (listType !== 'ul') {
         if (listType) out.push(`</${listType}>`)
         out.push('<ul class="list-disc list-outside ml-4 space-y-1 my-2">')
         listType = 'ul'
       }
-      out.push(`<li>${t.slice(2)}</li>`)
+      out.push(`<li>${t.replace(/^[-*•▸‣] ?/, '')}</li>`)
     } else if (t.match(/^\d+\. /)) {
       if (listType !== 'ol') {
         if (listType) out.push(`</${listType}>`)
@@ -159,7 +159,9 @@ function renderResponse(text: string, companyName: string): string {
       out.push('<div class="h-2"></div>')
     } else {
       if (listType) { out.push(`</${listType}>`); listType = '' }
-      out.push(`<p>${t}</p>`)
+      // Lines starting with an emoji get extra top spacing (Bright Data uses these as section headers)
+      const startsWithEmoji = /^\p{Emoji}/u.test(t)
+      out.push(startsWithEmoji ? `<p class="mt-3 font-medium">${t}</p>` : `<p>${t}</p>`)
     }
   }
   if (listType) out.push(`</${listType}>`)
@@ -260,7 +262,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {html ? (
             <div
-              className="text-xs text-[#141414] leading-relaxed space-y-1"
+              className="text-xs text-[#141414] leading-relaxed space-y-2"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
