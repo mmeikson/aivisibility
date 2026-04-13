@@ -28,7 +28,7 @@ async function parseBatch(
     index: i,
     id: p.id,
     prompt: p.prompt_text,
-    response: (p.response_text ?? '').slice(0, 2000),
+    response: (p.response_text ?? '').slice(0, 8000),
   }))
 
   const res = await client.messages.create({
@@ -81,10 +81,16 @@ Return ONLY a valid JSON array, no explanation:
     const probe = probes[item.index]
     if (!probe) continue
     const citedUrls = probe.citations ?? []
+    // Deterministic override: if company name appears literally in the full response,
+    // trust that over Haiku's judgment (catches truncation misses and Haiku false-negatives)
+    const fullText = probe.response_text ?? ''
+    const nameInText = fullText.toLowerCase().includes(inference.company_name.toLowerCase())
+    const wasMentioned = item.was_mentioned || nameInText
+    const strength = item.recommendation_strength ?? 'none'
     results.set(probe.id, {
-      was_mentioned: item.was_mentioned,
+      was_mentioned: wasMentioned,
       mention_positions: item.mention_positions ?? [],
-      recommendation_strength: item.recommendation_strength ?? 'none',
+      recommendation_strength: wasMentioned && strength === 'none' ? 'hedged' : strength,
       competitor_mentions: item.competitor_mentions ?? [],
       cited_urls: citedUrls,
       cited_domains: extractDomains(citedUrls),
