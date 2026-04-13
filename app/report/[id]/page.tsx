@@ -307,18 +307,18 @@ function categoryDiagnostic(score: Score, companyName: string): string {
 
   switch (cat) {
     case 'category_association': {
-      const mentionPct = Math.round(((c.discovery_mention_rate ?? 0) / 40) * 100)
-      const consistency = c.cross_platform_consistency ?? 0
+      const mentionPts = c.mention_rate ?? 0
+      const consistency = c.cross_platform ?? 0
       const gap = c.competitor_gap ?? 0
-      const mentionStr = mentionPct >= 70 ? 'frequently mentioned' : mentionPct >= 40 ? 'sometimes mentioned' : 'rarely mentioned'
-      const gapStr = gap >= 15 ? 'competitive with peers' : gap >= 8 ? 'somewhat behind competitors' : 'significantly behind competitors in share-of-voice'
+      const mentionStr = mentionPts >= 28 ? 'frequently mentioned' : mentionPts >= 16 ? 'sometimes mentioned' : 'rarely mentioned'
+      const gapStr = gap >= 20 ? 'competitive with peers' : gap >= 10 ? 'somewhat behind competitors' : 'significantly behind competitors in share-of-voice'
       const consistencyStr = consistency >= 15 ? 'consistently across platforms' : 'inconsistently across platforms'
       return `${name} is ${mentionStr} when users ask AI about its category, and appears ${consistencyStr}. It is ${gapStr}.`
     }
     case 'retrieval': {
-      const urlCitation = c.direct_url_citation ?? 0
+      const citation = c.citation_rate ?? 0
       const roundup = c.roundup_presence ?? 0
-      const citedStr = urlCitation >= 20 ? 'frequently cited as a direct source' : urlCitation >= 10 ? 'occasionally cited as a source' : 'rarely cited as a direct source'
+      const citedStr = citation >= 20 ? 'frequently cited as a direct source' : citation >= 10 ? 'occasionally cited as a source' : 'rarely cited as a direct source'
       const roundupStr = roundup >= 15 ? 'appears in AI roundup responses' : 'is not appearing in AI roundup responses'
       return `${name} is ${citedStr} by AI models that use web retrieval. It ${roundupStr}, which are high-value visibility moments.`
     }
@@ -326,7 +326,7 @@ function categoryDiagnostic(score: Score, companyName: string): string {
       const schema = c.schema_markup ?? 0
       const profile = c.profile_completeness ?? 0
       const consistency = c.description_consistency ?? 0
-      const wiki = c.wikipedia ?? 0
+      const wiki = c.wikipedia_presence ?? 0
       const schemaStr = schema >= 15 ? 'has structured schema markup' : 'is missing structured schema markup'
       const profileStr = profile >= 15 ? 'well-represented on key directories' : profile >= 8 ? 'partially represented on directories' : 'underrepresented on key directories'
       const consistencyStr = consistency >= 30 ? 'consistently described across sources' : consistency >= 15 ? 'described somewhat inconsistently' : 'described inconsistently across the web'
