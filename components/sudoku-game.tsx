@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { getSudoku } from 'sudoku-gen'
 
 function newGame() {
@@ -22,6 +22,8 @@ export default function SudokuGame() {
   )
   const filled = given.size + Object.values(inputs).filter(Boolean).length
   const solved = filled === 81 && errors.size === 0
+
+  const gridRef = useRef<HTMLDivElement>(null)
 
   const reset = useCallback(() => {
     setGame(newGame())
@@ -49,8 +51,10 @@ export default function SudokuGame() {
     <div className="space-y-3">
       {/* Grid — onKeyDown fires when any child button is focused */}
       <div
+        ref={gridRef}
         className="grid"
         style={{ gridTemplateColumns: 'repeat(9, 32px)', width: 'fit-content' }}
+        tabIndex={0}
         onKeyDown={handleKeyDown}
       >
         {Array.from({ length: 81 }, (_, i) => {
@@ -74,7 +78,7 @@ export default function SudokuGame() {
             <button
               key={i}
               type="button"
-              onClick={() => setSelected(i)}
+              onClick={() => { setSelected(i); gridRef.current?.focus() }}
               style={{
                 width: 32, height: 32,
                 borderRight, borderBottom, borderLeft, borderTop,

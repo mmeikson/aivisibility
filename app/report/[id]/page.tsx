@@ -190,15 +190,15 @@ export default async function ReportPage({ params }: Props) {
 
   const probeCount = probes.filter(p => p.status === 'complete').length
 
-  // Foundation scores (entity + social_proof)
-  const foundationScores = scores.filter(s =>
-    s.category === 'entity' || s.category === 'social_proof'
-  )
+  // Disambiguation: collect all unique entities AI engines confused the brand with
+  const confusedProbes = probes.filter(p => p.parsed_json?.entity_confused)
+  const confusedWith = [...new Set(
+    confusedProbes.map(p => p.parsed_json?.confused_with).filter(Boolean) as string[]
+  )]
 
-  // Recommendations for category_association + retrieval (engine-visible recs)
-  const engineRecs = recommendations.filter(r =>
-    r.type === 'category_association' || r.type === 'retrieval'
-  )
+  // All 4 scores in display order
+  const SCORE_ORDER: ScoreCategory[] = ['category_association', 'retrieval', 'social_proof', 'entity']
+  const orderedScores = SCORE_ORDER.flatMap(cat => scores.filter(s => s.category === cat))
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -248,6 +248,20 @@ export default async function ReportPage({ params }: Props) {
                 View dashboard →
               </Link>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disambiguation warning */}
+      {confusedProbes.length > 0 && (
+        <div className="border-b border-[#fde68a] bg-[#fffbeb] px-6 py-3">
+          <div className="max-w-4xl mx-auto flex items-start gap-3">
+            <span className="text-[#92400e] mt-0.5">⚠</span>
+            <p className="text-xs text-[#92400e] leading-relaxed">
+              <span className="font-medium">Disambiguation detected</span> — {confusedProbes.length} of {probeCount} AI responses appear to describe a different company
+              {confusedWith.length > 0 && <> ({confusedWith.join(', ')})</>} rather than {report.company_name ?? new URL(report.url).hostname}.
+              This is suppressing your scores. See the <span className="font-medium">Entity Recognition</span> category for details.
+            </p>
           </div>
         </div>
       )}
@@ -315,7 +329,7 @@ export default async function ReportPage({ params }: Props) {
 
           {/* Summary + score row */}
           {scores.length > 0 && report.category && (
-            <div className="flex items-center gap-8 pt-2 border-t border-[#E5E2DC]">
+            <div className="flex items-start gap-8 pt-6 border-t border-[#E5E2DC]">
               <p
                 className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
                 style={{ fontFamily: 'var(--font-geist-sans)' }}
@@ -341,17 +355,15 @@ export default async function ReportPage({ params }: Props) {
           </div>
         )}
 
-        {/* Foundation section */}
-        {foundationScores.length > 0 && (
+        {/* Score cards — all 4 categories */}
+        {orderedScores.length > 0 && (
           <div className="space-y-4 fade-up fade-up-2 mb-12">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Foundation</span>
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Scores</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
-              <span className="text-xs font-mono text-[#ABABAB]">signals that influence all engines</span>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
-              {foundationScores.map((score) => (
+              {orderedScores.map((score) => (
                 <FoundationCard key={score.id} score={score} reportId={id} />
               ))}
             </div>
@@ -359,15 +371,14 @@ export default async function ReportPage({ params }: Props) {
         )}
 
         {/* What to improve */}
-        {engineRecs.length > 0 && (
+        {recommendations.length > 0 && (
           <div className="space-y-4 fade-up fade-up-3">
             <div className="flex items-center gap-3">
               <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">What to improve</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
             </div>
-
             <div className="space-y-2">
-              {engineRecs.map((rec, i) => (
+              {recommendations.map((rec, i) => (
                 <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
               ))}
             </div>

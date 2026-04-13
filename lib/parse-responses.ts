@@ -20,7 +20,8 @@ function extractDomains(urls: string[]): string[] {
 
 async function parseBatch(
   probes: Probe[],
-  inference: InferenceResult
+  inference: InferenceResult,
+  reportUrl: string
 ): Promise<Map<string, ParsedProbeResult>> {
   const client = getClient()
 
@@ -40,6 +41,7 @@ async function parseBatch(
         content: `You are extracting structured data from AI-generated responses to measure brand visibility.
 
 Brand name to look for: "${inference.company_name}"
+Brand domain: "${new URL(reportUrl).hostname}"
 Expected category: "${inference.category}"
 Expected description: "${inference.canonical_description}"
 
@@ -49,8 +51,8 @@ For each response below, extract:
 - recommendation_strength: "none" if not mentioned, "hedged" if mentioned with caveats/qualifications, "confident" if recommended directly
 - competitor_mentions: array of any competitor/alternative brand names mentioned
 - cited_urls: copy the cited_urls array from the input (already extracted)
-- entity_confused: true if the response appears to describe "${inference.company_name}" as a fundamentally different type of company than expected (e.g. wrong industry, wrong product category). This happens when AI models confuse two companies with similar names. Set to false if the brand simply isn't mentioned.
-- confused_with: if entity_confused is true, the name of the other entity the AI appears to be confusing it with (e.g. "Tenex.ai" if the response describes an AI consultancy when the target is a cybersecurity company). Otherwise null.
+- entity_confused: true if the response appears to describe a DIFFERENT company than the one at "${new URL(reportUrl).hostname}". This includes: (1) describing the wrong industry or product category, (2) referencing a different domain (e.g. response describes tenex.com when we are analyzing tenex.co), or (3) describing a different company that happens to share the same name. Set to false if the brand simply isn't mentioned.
+- confused_with: if entity_confused is true, the name or domain of the other entity the AI appears to be describing (e.g. "tenex.com" if the response clearly describes that company instead). Otherwise null.
 
 Return a JSON array with one object per input, in the same order.
 
@@ -103,14 +105,15 @@ Return ONLY a valid JSON array, no explanation:
 
 export async function parseProbeResponses(
   probes: Probe[],
-  inference: InferenceResult
+  inference: InferenceResult,
+  reportUrl: string
 ): Promise<void> {
   const eligible = probes.filter((p) => p.status === 'complete' && p.response_text)
 
   for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
     const batch = eligible.slice(i, i + BATCH_SIZE)
     try {
-      const results = await parseBatch(batch, inference)
+      const results = await parseBatch(batch, inference, reportUrl)
       await Promise.all(
         batch.map((probe) => {
           const parsed = results.get(probe.id)

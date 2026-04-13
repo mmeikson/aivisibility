@@ -85,63 +85,36 @@ async function brightDataScrape(
 }
 
 // ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// Falls back to gpt-4o-search-preview API if Bright Data is unavailable or fails.
+// Tries Bright Data up to BD_RETRIES times with a 45s timeout each attempt.
 
-async function probeOpenAIApi(probe: Probe, onResult: OnProbeResult): Promise<void> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  const start = Date.now()
-  try {
-    const res = await client.chat.completions.create({
-      model: 'gpt-4o-search-preview',
-      messages: [{ role: 'user', content: probe.prompt_text }],
-    })
-    const content = res.choices[0]?.message?.content ?? ''
-    const urlMatches = content.match(/https?:\/\/[^\s\)\]\"]+/g) ?? []
-    await onResult(probe.id, {
-      response_text: content,
-      citations: [...new Set(urlMatches)],
-      latency_ms: Date.now() - start,
-      status: 'complete',
-    })
-  } catch (err) {
-    console.error(`OpenAI API probe failed (${probe.id}):`, err)
-    await onResult(probe.id, { status: 'failed' })
-  }
-}
+const BD_RETRIES = 2
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const bdKey = process.env.BRIGHTDATA_API_KEY
-
-  if (!bdKey) {
-    await Promise.all(probes.map((probe) => probeOpenAIApi(probe, onResult)))
-    return
-  }
-
-  const BD_RETRIES = 2
-  const BD_PROBE_TIMEOUT_MS = 75_000
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
-    for (let attempt = 0; attempt <= BD_RETRIES; attempt++) {
+    let lastErr: unknown
+    for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
       try {
-        if (attempt > 0) await sleep(2000 * attempt)
         const { text, citations } = await Promise.race([
           brightDataScrape(
             BD_CHATGPT_ID,
             [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
             bdKey
           ),
-          timeout(BD_PROBE_TIMEOUT_MS, `ChatGPT probe ${probe.id}`),
+          timeout(45_000, `ChatGPT probe ${probe.id} attempt ${attempt + 1}`),
         ])
         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
         return
       } catch (err) {
-        console.warn(`OpenAI (Bright Data) probe attempt ${attempt + 1} failed (${probe.id}):`, err)
+        lastErr = err
+        console.warn(`ChatGPT Bright Data attempt ${attempt + 1} failed (${probe.id}):`, err)
       }
     }
-    // Bright Data exhausted — fall back to direct API rather than losing the data point
-    console.warn(`OpenAI (Bright Data) failed after ${BD_RETRIES + 1} attempts, falling back to API (${probe.id})`)
-    await probeOpenAIApi(probe, onResult)
+    console.error(`ChatGPT probe exhausted all attempts (${probe.id}):`, lastErr)
+    await onResult(probe.id, { status: 'failed' })
   }))
 }
 

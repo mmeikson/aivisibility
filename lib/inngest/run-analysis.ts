@@ -159,7 +159,8 @@ export const runAnalysis = inngest.createFunction(
     await step.run('parse-responses', async () => {
       await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
       const allProbes = await getProbesByReport(reportId)
-      await parseProbeResponses(allProbes, inference)
+      const report = await getReport(reportId)
+      await parseProbeResponses(allProbes, inference, report?.url ?? '')
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 

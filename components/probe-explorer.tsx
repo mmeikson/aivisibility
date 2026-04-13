@@ -78,15 +78,15 @@ export function ProbeExplorer({ probes, companyName }: Props) {
   return (
     <>
       {/* Tab bar */}
-      <div className="border border-[#E5E2DC] rounded-t-lg flex gap-0 overflow-x-auto bg-white">
+      <div className="flex gap-1 overflow-x-auto">
         {activePlatforms.map((platform) => (
           <button
             key={platform}
             onClick={() => setActiveTab(platform)}
-            className={`px-4 py-3 text-left transition-colors border-b-2 shrink-0 ${
+            className={`px-4 py-3 text-left shrink-0 rounded-t-lg border transition-colors ${
               activeTab === platform
-                ? 'border-[#141414] text-[#141414]'
-                : 'border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
+                ? 'bg-white border-[#E5E2DC] border-b-white text-[#141414] relative z-10 -mb-px'
+                : 'bg-[#FAFAF8] border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -101,55 +101,8 @@ export function ProbeExplorer({ probes, companyName }: Props) {
         ))}
       </div>
 
-      {/* Per-engine stats */}
-      <div className="border-x border-[#E5E2DC] bg-[#F9F8F6] px-5 py-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-mono">
-          <span className={
-            platformProbes.length === 0 ? 'text-[#ABABAB]' :
-            mentionedCount >= platformProbes.length * 0.6 ? 'text-[#16a34a]' :
-            mentionedCount >= platformProbes.length * 0.3 ? 'text-[#d97706]' :
-            'text-[#dc2626]'
-          }>
-            Mentioned in {mentionedCount} of {platformProbes.length} prompts
-          </span>
-          {confidentCount > 0 && (
-            <>
-              <span className="text-[#CDCBC6]">·</span>
-              <span className="text-[#6C6C6C]">
-                {confidentCount} confident recommendation{confidentCount !== 1 ? 's' : ''}
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          {PROMPT_TYPES.filter((type) => byType[type].total > 0).map((type) => {
-            const { total, mentioned } = byType[type]
-            const pct = total > 0 ? Math.round((mentioned / total) * 100) : 0
-            return (
-              <div key={type} className="flex items-center gap-3">
-                <span className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide w-28 shrink-0">
-                  {PROMPT_TYPE_LABELS[type]}
-                </span>
-                <div className="flex-1 h-1.5 bg-[#E5E2DC] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      pct >= 60 ? 'bg-[#16a34a]' : pct >= 30 ? 'bg-[#d97706]' : 'bg-[#dc2626]'
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="text-[10px] font-mono text-[#6C6C6C] shrink-0 w-10 text-right">
-                  {mentioned}/{total}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
       {/* Probe list */}
-      <div className="rounded-b-lg border border-t-0 border-[#E5E2DC] bg-white overflow-hidden">
+      <div className="rounded-b-lg rounded-tr-lg border border-[#E5E2DC] bg-white overflow-hidden">
         {platformProbes.map((probe, i) => {
           const mentioned = probe.parsed_json?.was_mentioned
           const strength = probe.parsed_json?.recommendation_strength
