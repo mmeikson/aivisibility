@@ -15,51 +15,40 @@ export function scoreRetrieval(
     return { raw_score: 0, component_scores_json: {} }
   }
 
-  // Component 1: Mention rate on retrieval platforms (30 pts)
+  // Component 1: Mention rate on retrieval platforms (60 pts)
+  // The primary signal: does retrieval-based AI mention the brand at all?
   const mentioned = retrievalProbes.filter((p) => p.parsed_json!.was_mentioned)
   const mentionRate = mentioned.length / retrievalProbes.length
-  const mentionScore = Math.round(mentionRate * 30)
+  const mentionScore = Math.round(mentionRate * 60)
 
-  // Component 2: Direct URL citation rate (30 pts)
-  // A brand-owned URL being cited is the strongest retrieval signal
+  // Component 2: Roundup/listicle presence (30 pts)
+  // Brand appears in responses that compare multiple options (high-value moments)
+  const roundupProbes = retrievalProbes.filter((p) =>
+    p.parsed_json!.competitor_mentions.length >= 2
+  )
+  const brandInRoundups = roundupProbes.filter((p) => p.parsed_json!.was_mentioned).length
+  const roundupScore = roundupProbes.length > 0
+    ? Math.round((brandInRoundups / roundupProbes.length) * 30)
+    : 15 // neutral if no roundup data
+
+  // Component 3: Domain citation bonus (10 pts)
+  // Brand's own domain cited as a source — positive signal but not required
   const normalizedDomain = brandDomain.replace(/^www\./, '').toLowerCase()
   const withCitation = retrievalProbes.filter((p) =>
     (p.parsed_json!.cited_domains ?? []).some((d) =>
       d.replace(/^www\./, '').toLowerCase().includes(normalizedDomain)
     )
   )
-  const citationRate = withCitation.length / retrievalProbes.length
-  const citationScore = citationRate >= 0.5
-    ? 30
-    : Math.round(citationRate * 60)
+  const citationScore = withCitation.length > 0 ? 10 : 0
 
-  // Component 3: Roundup/listicle presence — approximated from response text
-  // Check if brand appears in responses that list multiple competitors (i.e. roundup-style)
-  const roundupProbes = retrievalProbes.filter((p) => {
-    const competitors = p.parsed_json!.competitor_mentions.length
-    return competitors >= 2 // response mentions multiple competitors = likely a roundup
-  })
-  const brandInRoundups = roundupProbes.filter((p) => p.parsed_json!.was_mentioned).length
-  const roundupScore = roundupProbes.length > 0
-    ? Math.round((brandInRoundups / roundupProbes.length) * 20)
-    : 10 // neutral if no roundup data
-
-  // Component 4: Content format match (20 pts)
-  // Approximated: if brand is cited on retrieval platforms, it has relevant content
-  const contentScore = citationRate >= 0.3 ? 20
-    : citationRate > 0 ? 10
-    : mentionRate > 0 ? 5
-    : 0
-
-  const raw_score = Math.min(100, mentionScore + citationScore + roundupScore + contentScore)
+  const raw_score = Math.min(100, mentionScore + roundupScore + citationScore)
 
   return {
     raw_score,
     component_scores_json: {
       mention_rate: mentionScore,
-      citation_rate: citationScore,
       roundup_presence: roundupScore,
-      content_format: contentScore,
+      citation_rate: citationScore,
     },
   }
 }

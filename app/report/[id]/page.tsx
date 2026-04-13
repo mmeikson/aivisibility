@@ -316,21 +316,21 @@ function categoryDiagnostic(score: Score, companyName: string): string {
       return `${name} is ${mentionStr} when users ask AI about its category, and appears ${consistencyStr}. It is ${gapStr}.`
     }
     case 'retrieval': {
-      const citation = c.citation_rate ?? 0
+      const mention = c.mention_rate ?? 0
       const roundup = c.roundup_presence ?? 0
-      const citedStr = citation >= 20 ? 'frequently cited as a direct source' : citation >= 10 ? 'occasionally cited as a source' : 'rarely cited as a direct source'
-      const roundupStr = roundup >= 15 ? 'appears in AI roundup responses' : 'is not appearing in AI roundup responses'
-      return `${name} is ${citedStr} by AI models that use web retrieval. It ${roundupStr}, which are high-value visibility moments.`
+      const mentionStr = mention >= 45 ? 'frequently mentioned' : mention >= 25 ? 'sometimes mentioned' : 'rarely mentioned'
+      const roundupStr = roundup >= 20 ? 'appears in AI roundup responses' : 'is not appearing in AI roundup responses'
+      return `${name} is ${mentionStr} by AI models that use web retrieval. It ${roundupStr}, which are high-value visibility moments.`
     }
     case 'entity': {
-      const schema = c.schema_markup ?? 0
       const profile = c.profile_completeness ?? 0
       const consistency = c.description_consistency ?? 0
       const wiki = c.wikipedia_presence ?? 0
-      const schemaStr = schema >= 15 ? 'has structured schema markup' : 'is missing structured schema markup'
-      const profileStr = profile >= 15 ? 'well-represented on key directories' : profile >= 8 ? 'partially represented on directories' : 'underrepresented on key directories'
-      const consistencyStr = consistency >= 30 ? 'consistently described across sources' : consistency >= 15 ? 'described somewhat inconsistently' : 'described inconsistently across the web'
-      return `${name} ${schemaStr} and is ${profileStr} like G2, LinkedIn, and Crunchbase. It is ${consistencyStr}${wiki === 0 ? ' with no Wikipedia presence detected' : ''}.`
+      const disambiguation = c.entity_disambiguation ?? 0
+      const profileStr = profile >= 18 ? 'well-represented on key directories' : profile >= 10 ? 'partially represented on directories' : 'underrepresented on key directories'
+      const consistencyStr = consistency >= 20 ? 'consistently described across sources' : consistency >= 10 ? 'described somewhat inconsistently' : 'described inconsistently across the web'
+      const disambiguationStr = disambiguation >= 25 ? 'AI models correctly identify it' : 'AI models sometimes confuse it with other entities'
+      return `${name} is ${profileStr} like G2, LinkedIn, and Crunchbase, and ${disambiguationStr}. It is ${consistencyStr}${wiki === 0 ? ' with no Wikipedia presence detected' : ''}.`
     }
     case 'social_proof': {
       const g2 = c.g2_presence ?? 0
