@@ -2,7 +2,7 @@ import { inngest } from './client'
 import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
-import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from './probe-platform'
+import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -154,6 +154,29 @@ export const runAnalysis = inngest.createFunction(
         await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
       }),
     ])
+
+    // Step 5.5: Retry failed probes once
+    await step.run('probe-retry', async () => {
+      const allProbes = await getProbesByReport(reportId)
+      const failed = allProbes.filter((p) => p.status === 'failed')
+      if (failed.length === 0) return
+
+      await emitEvent(reportId, 'probe_batch_done', `Retrying ${failed.length} failed probe${failed.length !== 1 ? 's' : ''}...`)
+
+      const byPlatform: Record<string, typeof failed> = {}
+      for (const probe of failed) {
+        ;(byPlatform[probe.platform] ??= []).push(probe)
+      }
+
+      const onResult: OnProbeResult = async (id, u) => { await updateProbe(id, u) }
+
+      await Promise.all([
+        byPlatform['openai']     && probeOpenAI(byPlatform['openai'], onResult),
+        byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
+        byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
+        byPlatform['google']     && probeGoogle(byPlatform['google'], onResult),
+      ].filter(Boolean))
+    })
 
     // Step 6: Parse all responses
     await step.run('parse-responses', async () => {
