@@ -8,8 +8,11 @@ const CLOSABILITY: Record<ScoreCategory, number> = {
   social_proof: 0.2,     // 6+ months
 }
 
+// Closability tier dominates (×10000), gap is tiebreaker within tier.
+// Guarantees entity (1–3 days) always ranks above retrieval (2–6 weeks),
+// which always ranks above category_association, then social_proof.
 export function priorityScore(category: ScoreCategory, rawScore: number): number {
-  return (100 - rawScore) * CLOSABILITY[category]
+  return CLOSABILITY[category] * 10000 + (100 - rawScore)
 }
 
 // Severity label for display
