@@ -60,7 +60,7 @@ Score category: ${category.replace(/_/g, ' ')}
 Score: ${score.raw_score}/100 (${severity})
 Weak components: ${weakComponents.join(', ') || 'none identified'}
 
-Generate 2–3 specific, actionable recommendations. For each, the "why_it_matters" must explain the direct connection to AI recommendation behavior — not general SEO or marketing outcomes. Return a JSON array:
+Generate 2–3 specific, actionable recommendations tailored to this company's actual business type (${inference.category}). Do NOT suggest platforms or tactics that are irrelevant to their business model — e.g. do not recommend SaaS review sites (G2, Capterra, Trustpilot) for consulting firms, agencies, or non-software companies. Choose channels appropriate to what this company actually sells and how their customers make decisions. For each, the "why_it_matters" must explain the direct connection to AI recommendation behavior — not general SEO or marketing outcomes. Return a JSON array:
 [{
   "title": "action-oriented title, max 8 words",
   "why_it_matters": "2-3 sentences: what this company's specific gap is and exactly how fixing it causes AI models to mention them more often",
@@ -74,7 +74,7 @@ For the copy asset:
 - entity: canonical one-sentence company description for consistent use across G2, LinkedIn, Crunchbase, Capterra
 - category_association: content outline for a comparison page vs their top competitor (these pages are heavily indexed by AI models)
 - retrieval: content brief for a page targeting a key discovery query your customers ask AI assistants
-- social_proof: short review request email for customers (more recent G2/Capterra reviews directly feed AI training data)
+- social_proof: short review/testimonial request message for customers, using an appropriate channel for this business type (review platform, LinkedIn recommendation, case study request, etc.)
 
 Return ONLY valid JSON, no explanation.`
 
