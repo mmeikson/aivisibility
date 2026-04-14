@@ -10,6 +10,7 @@ import { scoreEntity } from '@/lib/scoring/entity'
 import { scoreSocialProof } from '@/lib/scoring/social-proof'
 import { priorityScore } from '@/lib/scoring/priority'
 import { generateRecommendations } from '@/lib/recommendations'
+import { generatePlatformSummaries } from '@/lib/platform-summaries'
 
 export const runAnalysis = inngest.createFunction(
   {
@@ -197,6 +198,17 @@ export const runAnalysis = inngest.createFunction(
       const report = await getReport(reportId)
       await parseProbeResponses(allProbes, inference, report?.url ?? '')
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
+    })
+
+    // Step 6.5: Generate per-platform summaries
+    await step.run('platform-summaries', async () => {
+      const allProbes = await getProbesByReport(reportId)
+      const summaries = await generatePlatformSummaries(allProbes, inference.company_name)
+      if (Object.keys(summaries).length > 0) {
+        await updateReport(reportId, {
+          inference_json: { ...inference, platform_summaries: summaries },
+        })
+      }
     })
 
     // Step 7: Score all 4 categories

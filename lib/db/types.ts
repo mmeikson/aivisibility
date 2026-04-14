@@ -36,6 +36,7 @@ export interface InferenceResult {
   target_customer: string
   competitors: string[]
   confidence: Record<string, 'low' | 'medium' | 'high'>
+  platform_summaries?: Record<string, string>
 }
 
 export interface ParsedProbeResult {

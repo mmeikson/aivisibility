@@ -351,7 +351,11 @@ export default async function ReportPage({ params }: Props) {
               <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Prompt Analysis</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
             </div>
-            <ProbeExplorer probes={probes} companyName={report.company_name ?? ''} />
+            <ProbeExplorer
+              probes={probes}
+              companyName={report.company_name ?? ''}
+              platformSummaries={report.inference_json?.platform_summaries ?? {}}
+            />
           </div>
         )}
 

@@ -36,9 +36,10 @@ const PROMPT_TYPES = ['discovery', 'comparison', 'job_to_be_done'] as const
 interface Props {
   probes: Probe[]
   companyName: string
+  platformSummaries?: Record<string, string>
 }
 
-export function ProbeExplorer({ probes, companyName }: Props) {
+export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: Props) {
   const [selected, setSelected] = useState<Probe | null>(null)
 
   const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
@@ -100,6 +101,13 @@ export function ProbeExplorer({ probes, companyName }: Props) {
           </button>
         ))}
       </div>
+
+      {/* Platform summary */}
+      {platformSummaries[activeTab] && (
+        <div className="border-x border-t border-[#E5E2DC] bg-white px-5 py-3">
+          <p className="text-sm text-[#6C6C6C] leading-relaxed">{platformSummaries[activeTab]}</p>
+        </div>
+      )}
 
       {/* Probe list */}
       <div className="relative rounded-b-lg rounded-tr-lg border border-[#E5E2DC] bg-white overflow-hidden">
