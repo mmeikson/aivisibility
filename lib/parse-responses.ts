@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { updateProbe } from '@/lib/db/queries'
 import type { Probe, ParsedProbeResult, InferenceResult } from '@/lib/db/types'
 
-const BATCH_SIZE = 10
+const BATCH_SIZE = 5
 
 function getClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -34,7 +34,7 @@ async function parseBatch(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [
       {
         role: 'user',
@@ -112,16 +112,33 @@ export async function parseProbeResponses(
 
   for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
     const batch = eligible.slice(i, i + BATCH_SIZE)
+    let results = new Map<string, ParsedProbeResult>()
     try {
-      const results = await parseBatch(batch, inference, reportUrl)
-      await Promise.all(
-        batch.map((probe) => {
-          const parsed = results.get(probe.id)
-          if (parsed) return updateProbe(probe.id, { parsed_json: parsed })
-        })
-      )
+      results = await parseBatch(batch, inference, reportUrl)
     } catch (err) {
       console.error(`Parse batch ${i / BATCH_SIZE + 1} failed:`, err)
     }
+    await Promise.all(
+      batch.map((probe) => {
+        const parsed = results.get(probe.id)
+        if (parsed) return updateProbe(probe.id, { parsed_json: parsed })
+        // Haiku missed this probe — fall back to string match
+        const fullText = probe.response_text ?? ''
+        const wasMentioned = fullText.toLowerCase().includes(inference.company_name.toLowerCase())
+        const citedUrls = probe.citations ?? []
+        return updateProbe(probe.id, {
+          parsed_json: {
+            was_mentioned: wasMentioned,
+            mention_positions: [],
+            recommendation_strength: wasMentioned ? 'hedged' : 'none',
+            competitor_mentions: [],
+            cited_urls: citedUrls,
+            cited_domains: extractDomains(citedUrls),
+            entity_confused: false,
+            confused_with: null,
+          },
+        })
+      })
+    )
   }
 }
