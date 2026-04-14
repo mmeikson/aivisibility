@@ -60,8 +60,14 @@ Score category: ${category.replace(/_/g, ' ')}
 Score: ${score.raw_score}/100 (${severity})
 Weak components: ${weakComponents.join(', ') || 'none identified'}
 
-Generate 2–3 specific, actionable recommendations. For each, the "why_it_matters" must explain the direct connection to AI recommendation behavior — not general SEO or marketing outcomes. Return a JSON array:
+Generate 3 specific, actionable recommendations — one from EACH of these three contexts:
+1. "website" — actions on the company's own domain (content, schema, pages)
+2. "owned_platforms" — actions on platforms they control but don't own (G2, LinkedIn, Crunchbase, Capterra, Product Hunt, app stores, social profiles)
+3. "outreach" — actions requiring third-party engagement (journalists, bloggers, Reddit communities, link building, PR, partnerships)
+
+For each recommendation, the "why_it_matters" must explain the direct connection to AI recommendation behavior — not general SEO or marketing outcomes. Return a JSON array:
 [{
+  "context": "website" | "owned_platforms" | "outreach",
   "title": "action-oriented title, max 8 words",
   "why_it_matters": "2-3 sentences: what this company's specific gap is and exactly how fixing it causes AI models to mention them more often",
   "actions": ["step 1", "step 2", "step 3", "step 4"],
@@ -78,7 +84,7 @@ For the copy asset:
 
 Return ONLY valid JSON, no explanation.`
 
-  type RawRec = { title: string; why_it_matters: string; actions: string[]; copy_asset: string }
+  type RawRec = { context?: string; title: string; why_it_matters: string; actions: string[]; copy_asset: string }
   let raw: RawRec[] | null = null
 
   for (let attempt = 1; attempt <= 3; attempt++) {
