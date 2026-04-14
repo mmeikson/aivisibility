@@ -10,10 +10,16 @@ interface SerpResult {
 
 async function serpSearch(query: string, num = 10): Promise<SerpResult> {
   const key = process.env.SERP_API_KEY
-  if (!key) return {}
+  if (!key) {
+    console.warn('[social-proof] SERP_API_KEY not set — all social proof scores will be 0')
+    return {}
+  }
   const url = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${key}&num=${num}`
   const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
-  if (!res.ok) return {}
+  if (!res.ok) {
+    console.warn(`[social-proof] SerpAPI returned ${res.status} for query: ${query}`)
+    return {}
+  }
   return res.json()
 }
 
@@ -67,11 +73,11 @@ interface SourceConfig {
 const VERTICAL_CONFIGS: Record<Vertical, SourceConfig> = {
   saas: {
     searches: (brand, category, competitor) => [
-      serpSearch(`${brand} reviews site:g2.com`, 5),
-      serpSearch(`${brand} reviews site:capterra.com`, 5),
-      serpSearch(`${brand} site:reddit.com`, 10),
+      serpSearch(`"${brand}" reviews site:g2.com`, 5),
+      serpSearch(`"${brand}" reviews site:capterra.com`, 5),
+      serpSearch(`"${brand}" site:reddit.com`, 10),
       serpSearch(`best ${category}`, 20),
-      serpSearch(`${brand} site:producthunt.com`, 3),
+      serpSearch(`"${brand}" site:producthunt.com`, 3),
       competitor ? serpSearch(`best ${category} ${competitor}`, 20) : Promise.resolve({}),
     ],
     score: ([g2R, capR, redditR, listicleR, phR, compR], brand, competitor) => {
@@ -108,11 +114,11 @@ const VERTICAL_CONFIGS: Record<Vertical, SourceConfig> = {
 
   consumer: {
     searches: (brand, category, competitor) => [
-      serpSearch(`${brand} reviews site:amazon.com`, 5),
-      serpSearch(`${brand} reviews site:trustpilot.com`, 5),
-      serpSearch(`${brand} site:reddit.com`, 10),
+      serpSearch(`"${brand}" reviews site:amazon.com`, 5),
+      serpSearch(`"${brand}" reviews site:trustpilot.com`, 5),
+      serpSearch(`"${brand}" site:reddit.com`, 10),
       serpSearch(`best ${category}`, 20),
-      serpSearch(`${brand} review site:youtube.com`, 5),
+      serpSearch(`"${brand}" review site:youtube.com`, 5),
       competitor ? serpSearch(`best ${category} ${competitor}`, 20) : Promise.resolve({}),
     ],
     score: ([amzR, tpR, redditR, listicleR, ytR, compR], brand, competitor) => {
@@ -149,11 +155,11 @@ const VERTICAL_CONFIGS: Record<Vertical, SourceConfig> = {
 
   health_wellness: {
     searches: (brand, category, competitor) => [
-      serpSearch(`${brand} reviews site:amazon.com`, 5),
-      serpSearch(`${brand} reviews site:trustpilot.com`, 5),
-      serpSearch(`${brand} site:reddit.com`, 10),
+      serpSearch(`"${brand}" reviews site:amazon.com`, 5),
+      serpSearch(`"${brand}" reviews site:trustpilot.com`, 5),
+      serpSearch(`"${brand}" site:reddit.com`, 10),
       serpSearch(`best ${category}`, 20),
-      serpSearch(`${brand} review`, 10), // editorial: healthline, webmd, etc.
+      serpSearch(`"${brand}" review`, 10), // editorial: healthline, webmd, etc.
       competitor ? serpSearch(`best ${category} ${competitor}`, 20) : Promise.resolve({}),
     ],
     score: ([amzR, tpR, redditR, listicleR, editorialR, compR], brand, competitor) => {
@@ -195,11 +201,11 @@ const VERTICAL_CONFIGS: Record<Vertical, SourceConfig> = {
 
   fintech: {
     searches: (brand, category, competitor) => [
-      serpSearch(`${brand} reviews site:trustpilot.com`, 5),
-      serpSearch(`${brand} review site:nerdwallet.com OR site:forbes.com OR site:bankrate.com OR site:investopedia.com`, 5),
-      serpSearch(`${brand} site:reddit.com`, 10),
+      serpSearch(`"${brand}" reviews site:trustpilot.com`, 5),
+      serpSearch(`"${brand}" review site:nerdwallet.com OR site:forbes.com OR site:bankrate.com OR site:investopedia.com`, 5),
+      serpSearch(`"${brand}" site:reddit.com`, 10),
       serpSearch(`best ${category}`, 20),
-      serpSearch(`${brand} app reviews`, 5),
+      serpSearch(`"${brand}" app reviews`, 5),
       competitor ? serpSearch(`best ${category} ${competitor}`, 20) : Promise.resolve({}),
     ],
     score: ([tpR, editorialR, redditR, listicleR, appR, compR], brand, competitor) => {

@@ -87,77 +87,42 @@ async function brightDataScrape(
   throw new Error(`Bright Data snapshot ${snapshotId} timed out`)
 }
 
-// ---- OpenAI Responses API (gpt-4o + web_search_preview) ----
-// Uses the same web search tool as ChatGPT desktop for real-time results.
-// BD fallback is kept below (commented) for quick revert if results diverge.
+// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
+// API alternatives (gpt-4o-search-preview, Responses API) produce materially
+// different results from the desktop client — BD is the only reliable match.
 
 const BD_RETRIES = 2
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  const date = new Date().toISOString().slice(0, 10)
+  const bdKey = process.env.BRIGHTDATA_API_KEY
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
-  console.log(`[ChatGPT] using Responses API (gpt-4o + web_search_preview) for ${probes.length} probes`)
+  console.log(`[ChatGPT] using Bright Data for ${probes.length} probes`)
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (client.responses.create as any)({
-        model: 'gpt-4o',
-        tools: [{ type: 'web_search_preview' }],
-        instructions: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States. When recommending products, services, or companies, default to US-based options unless otherwise specified.`,
-        input: probe.prompt_text,
-      })
-      const text: string = res.output_text ?? ''
-      if (!text.trim()) throw new Error('OpenAI Responses API returned empty response')
-
-      // Extract URL citations from output annotations
-      const citations: string[] = []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const item of (res.output ?? []) as any[]) {
-        for (const part of (item.content ?? [])) {
-          for (const ann of (part.annotations ?? [])) {
-            if (ann.type === 'url_citation' && ann.url) citations.push(ann.url)
-          }
-        }
+    let lastErr: unknown
+    for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
+      try {
+        const { text, citations } = await Promise.race([
+          brightDataScrape(
+            BD_CHATGPT_ID,
+            [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
+            bdKey
+          ),
+          timeout(90_000, `ChatGPT BD probe ${probe.id} attempt ${attempt + 1}`),
+        ])
+        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+        return
+      } catch (err) {
+        lastErr = err
+        console.warn(`ChatGPT BD attempt ${attempt + 1} failed (${probe.id}):`, err)
       }
-
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      console.error(`OpenAI Responses API probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
     }
+    console.error(`ChatGPT probe exhausted all attempts (${probe.id}):`, lastErr)
+    await onResult(probe.id, { status: 'failed' })
   }))
 }
-
-// ---- OpenAI via Bright Data (real ChatGPT browser session) — FALLBACK ----
-// Uncomment probeOpenAI above and swap this in if Responses API results diverge from desktop.
-//
-// export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-//   const bdKey = process.env.BRIGHTDATA_API_KEY
-//   if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
-//   console.log(`[ChatGPT] using Bright Data for ${probes.length} probes`)
-//   await Promise.all(probes.map(async (probe) => {
-//     const start = Date.now()
-//     let lastErr: unknown
-//     for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
-//       try {
-//         const { text, citations } = await Promise.race([
-//           brightDataScrape(BD_CHATGPT_ID, [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }], bdKey),
-//           timeout(90_000, `ChatGPT BD probe ${probe.id} attempt ${attempt + 1}`),
-//         ])
-//         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-//         return
-//       } catch (err) {
-//         lastErr = err
-//         console.warn(`ChatGPT BD attempt ${attempt + 1} failed (${probe.id}):`, err)
-//       }
-//     }
-//     console.error(`ChatGPT probe exhausted all attempts (${probe.id}):`, lastErr)
-//     await onResult(probe.id, { status: 'failed' })
-//   }))
-// }
 
 // ---- Anthropic (claude-sonnet-4-6, no web search) ----
 // Tests parametric knowledge from training data — what Claude "knows" about a brand.
