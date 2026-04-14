@@ -149,6 +149,8 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
   const bdKey = process.env.BRIGHTDATA_API_KEY
   if (!apifyKey && !bdKey) throw new Error('APIFY_API_KEY or BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
+  console.log(`[ChatGPT] using ${apifyKey ? 'Apify' : 'Bright Data'} for ${probes.length} probes`)
+
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
 
