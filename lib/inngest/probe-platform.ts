@@ -97,7 +97,7 @@ const APIFY_POLL_INTERVAL_MS = 5000
 const APIFY_MAX_POLLS = 36 // 3 minutes max
 
 // Concurrency limiter — prevents hitting Apify's per-account memory limit
-// (8192MB total; each run requests 2048MB → max 4 concurrent)
+// (8192MB total; each run uses 4096MB → max 2 concurrent)
 class Semaphore {
   private queue: Array<() => void> = []
   private running = 0
@@ -123,12 +123,19 @@ async function apifyScrapeChatGPT(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       // 2048MB per run → 4 concurrent within 8192MB account limit
-      body: JSON.stringify({ prompts: [promptText], proxyCountry: 'US', memory: 2048 }),
+      body: JSON.stringify({ prompts: [promptText], proxyCountry: 'US' }),
     }
   )
   const startData = await startRes.json()
   const runId: string = startData?.data?.id
-  if (!runId) throw new Error(`Apify failed to start run: ${JSON.stringify(startData).slice(0, 200)}`)
+  if (!runId) {
+    const errMsg = JSON.stringify(startData).slice(0, 300)
+    // If memory limit exceeded, let the caller handle retry
+    if (errMsg.includes('actor-memory-limit-exceeded')) {
+      throw Object.assign(new Error(`Apify memory limit exceeded`), { code: 'APIFY_MEMORY_LIMIT' })
+    }
+    throw new Error(`Apify failed to start run: ${errMsg}`)
+  }
 
   for (let i = 0; i < APIFY_MAX_POLLS; i++) {
     await sleep(APIFY_POLL_INTERVAL_MS)
@@ -166,8 +173,8 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
 
   console.log(`[ChatGPT] using ${apifyKey ? 'Apify' : 'Bright Data'} for ${probes.length} probes`)
 
-  // Limit to 3 concurrent Apify runs (3 × 2048MB = 6144MB < 8192MB limit)
-  const sem = new Semaphore(3)
+  // Limit to 2 concurrent Apify runs (2 × 4096MB = 8192MB = account limit)
+  const sem = new Semaphore(2)
 
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
@@ -175,11 +182,27 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     if (apifyKey) {
       await sem.acquire()
       try {
-        const { text, citations } = await Promise.race([
-          apifyScrapeChatGPT(probe.prompt_text, apifyKey),
-          timeout(120_000, `ChatGPT Apify probe ${probe.id}`),
-        ])
-        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+        let result: { text: string; citations: string[] } | null = null
+        // Retry up to 3 times if memory limit temporarily exceeded
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            result = await Promise.race([
+              apifyScrapeChatGPT(probe.prompt_text, apifyKey),
+              timeout(120_000, `ChatGPT Apify probe ${probe.id}`),
+            ])
+            break
+          } catch (err: unknown) {
+            const code = (err as { code?: string })?.code
+            if (code === 'APIFY_MEMORY_LIMIT' && attempt < 2) {
+              console.warn(`[Apify] memory limit hit for ${probe.id}, waiting 30s before retry ${attempt + 2}`)
+              await sleep(30_000)
+              continue
+            }
+            throw err
+          }
+        }
+        if (!result) throw new Error('Apify returned no result')
+        await onResult(probe.id, { response_text: result.text, citations: result.citations, latency_ms: Date.now() - start, status: 'complete' })
       } catch (err) {
         console.error(`ChatGPT Apify probe failed (${probe.id}):`, err)
         await onResult(probe.id, { status: 'failed' })
