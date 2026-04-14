@@ -187,7 +187,9 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
     return
   }
 
-    // Bright Data fallback
+  // Bright Data fallback
+  await Promise.all(probes.map(async (probe) => {
+    const start = Date.now()
     let lastErr: unknown
     for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
       try {
