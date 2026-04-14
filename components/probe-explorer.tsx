@@ -249,16 +249,14 @@ function renderResponse(text: string, companyName: string): string {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
 
-  // Highlight company name (only in text nodes, not inside HTML tags)
+  // Highlight company name in text nodes only (not inside HTML tags)
   if (companyName) {
     const escaped = companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    result = result.replace(
-      new RegExp(`(?<=>|^)([^<]*)`, 'g'),
-      (match) => match.replace(
-        new RegExp(escaped, 'gi'),
-        '<mark style="background:#fef08a;border-radius:2px;padding:0 2px">$&</mark>'
-      )
-    )
+    const nameRe = new RegExp(escaped, 'gi')
+    result = result
+      .split(/(<[^>]+>)/)
+      .map((part) => part.startsWith('<') ? part : part.replace(nameRe, '<mark style="background:#fef08a;border-radius:2px;padding:0 2px">$&</mark>'))
+      .join('')
   }
 
   return result
