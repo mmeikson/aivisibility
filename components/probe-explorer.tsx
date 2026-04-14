@@ -39,6 +39,32 @@ interface Props {
   platformSummaries?: Record<string, string>
 }
 
+function DonutRing({ mentioned, total }: { mentioned: number; total: number }) {
+  const r = 10
+  const size = 28
+  const cx = size / 2
+  const circ = 2 * Math.PI * r
+  const frac = total > 0 ? mentioned / total : 0
+  const filled = circ * frac
+  const empty = circ - filled
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="#E5E2DC" strokeWidth={3} />
+      {frac > 0 && (
+        <circle
+          cx={cx} cy={cx} r={r}
+          fill="none"
+          stroke="#16a34a"
+          strokeWidth={3}
+          strokeDasharray={`${filled} ${empty}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cx})`}
+        />
+      )}
+    </svg>
+  )
+}
+
 export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: Props) {
   const [selected, setSelected] = useState<Probe | null>(null)
 
@@ -69,24 +95,30 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
         const isOpen = openPlatform === platform
         const isLast = idx === activePlatforms.length - 1
 
+        const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
+
         return (
           <div key={platform} className={!isLast ? 'border-b border-[#E5E2DC]' : ''}>
             {/* Accordion header */}
             <div
-              className={`px-5 py-4 transition-colors ${
-                isOpen ? 'bg-white' : 'bg-[#FAFAF8] hover:bg-[#F3F2EF] cursor-pointer'
-              }`}
+              className={`px-5 py-4 bg-white transition-colors ${!isOpen ? 'hover:bg-[#FAFAF8] cursor-pointer' : ''}`}
               onClick={() => { if (!isOpen) setOpenPlatform(platform) }}
             >
-              {/* Engine identity row */}
-              <div className="flex items-center gap-2 mb-2">
-                {PLATFORM_ICONS[platform] && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={PLATFORM_ICONS[platform]} alt="" width={18} height={18} className="shrink-0" />
-                )}
-                <span className="text-sm font-semibold text-[#141414]">{PLATFORM_LABELS[platform] ?? platform}</span>
-                <span className="text-sm text-[#ABABAB]">·</span>
-                <span className="text-sm text-[#ABABAB]">{ENGINE_USERS[platform]}</span>
+              {/* Top row: engine identity + donut */}
+              <div className="flex items-start justify-between gap-4 mb-2">
+                <div className="flex items-center gap-2">
+                  {PLATFORM_ICONS[platform] && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={PLATFORM_ICONS[platform]} alt="" width={18} height={18} className="shrink-0" />
+                  )}
+                  <span className="text-sm font-semibold text-[#141414]">{PLATFORM_LABELS[platform] ?? platform}</span>
+                  <span className="text-sm text-[#ABABAB]">·</span>
+                  <span className="text-sm text-[#ABABAB]">{ENGINE_USERS[platform]}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <DonutRing mentioned={mentionedCount} total={platformProbes.length} />
+                  <span className="text-xs font-mono text-[#6C6C6C]">{mentionedCount}/{platformProbes.length} mentions</span>
+                </div>
               </div>
 
               {/* Summary */}

@@ -39,14 +39,14 @@ export async function generatePlatformSummaries(
     max_tokens: 1024,
     messages: [{
       role: 'user',
-      content: `Summarize how each AI engine responds to queries about "${companyName}".
+      content: `Summarize how each AI engine positions "${companyName}" based on the responses below.
 
 For each engine, write ONE sentence (max 30 words) that captures:
-- Whether the engine mentions or recommends ${companyName}
-- The key positioning or framing used (if mentioned)
-- Which competitors appear alongside it (if any)
+- How the engine frames or positions ${companyName} (if mentioned)
+- Which competitors appear alongside it
+- If not mentioned, what the engine recommends instead and why
 
-Be specific and concrete. If ${companyName} isn't mentioned, say what the engine recommends instead.
+Be specific and concrete. Do NOT include mention counts or statistics — only qualitative framing.
 
 Return ONLY a JSON object with platform keys: { "openai": "...", "anthropic": "...", "perplexity": "...", "google": "..." }
 
