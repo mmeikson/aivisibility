@@ -114,8 +114,8 @@ async function brightDataScrape(
 // Inngest will retry the step if it times out; already-completed probes are
 // filtered out before calling these functions so retries make forward progress.
 
-const BD_CONCURRENCY = 1
-const BD_STAGGER_MS  = 0
+const BD_CONCURRENCY = 2
+const BD_STAGGER_MS  = 15_000
 const BD_TIMEOUT_MS  = 60_000
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
