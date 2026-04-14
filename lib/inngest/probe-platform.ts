@@ -54,8 +54,8 @@ async function runWithConcurrency<T>(
 const BD_CHATGPT_ID = 'gd_m7aof0k82r803d5bjm'
 const BD_GEMINI_ID  = 'gd_mbz66arm2mf9cu856y'
 
-const BD_POLL_INTERVAL_MS = 5_000
-const BD_MAX_POLLS = 36 // 3 min max per probe
+const BD_POLL_INTERVAL_MS = 2_000
+const BD_MAX_POLLS = 90 // 3 min max per probe
 
 async function brightDataScrape(
   datasetId: string,
