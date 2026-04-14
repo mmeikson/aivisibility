@@ -109,11 +109,13 @@ async function brightDataScrape(
 }
 
 // ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// Concurrency=3, staggered by 3s. No retries here — the probe-retry step handles failures.
-// With 12 probes: ceil(12/3)=4 batches × 60s = 240s worst case, safely under maxDuration=300.
+// BD can only sustain 1 concurrent session reliably — multiple simultaneous
+// sessions cause the extras to return empty. Probes run strictly sequentially.
+// Inngest will retry the step if it times out; already-completed probes are
+// filtered out before calling these functions so retries make forward progress.
 
-const BD_CONCURRENCY = 3
-const BD_STAGGER_MS  = 3_000
+const BD_CONCURRENCY = 1
+const BD_STAGGER_MS  = 0
 const BD_TIMEOUT_MS  = 60_000
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {

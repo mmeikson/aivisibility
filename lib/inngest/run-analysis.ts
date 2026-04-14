@@ -100,16 +100,19 @@ export const runAnalysis = inngest.createFunction(
     // Step 5: Run all 4 platforms in parallel
     await Promise.all([
       step.run('probe-openai', async () => {
-        const probes = await getProbesByPlatform(reportId, 'openai')
-        let done = 0
+        // Filter to pending only — step may be retried if it times out, and
+        // already-completed probes should not be re-run.
+        const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
+        const total = (await getProbesByPlatform(reportId, 'openai')).length
+        let done = total - probes.length // already completed on prior attempt
         await probeOpenAI(probes, async (id, u) => {
           await updateProbe(id, u)
           if (u.status === 'complete' || u.status === 'failed') {
             done++
-            await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+            await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
           }
         })
-        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
       }),
 
       step.run('probe-anthropic', async () => {
@@ -143,16 +146,17 @@ export const runAnalysis = inngest.createFunction(
       }),
 
       step.run('probe-google', async () => {
-        const probes = await getProbesByPlatform(reportId, 'google')
-        let done = 0
+        const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
+        const total = (await getProbesByPlatform(reportId, 'google')).length
+        let done = total - probes.length
         await probeGoogle(probes, async (id, u) => {
           await updateProbe(id, u)
           if (u.status === 'complete' || u.status === 'failed') {
             done++
-            await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+            await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
           }
         })
-        await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+        await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
       }),
     ])
 
