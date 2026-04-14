@@ -253,7 +253,7 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY is not set')
   const client = new GoogleGenerativeAI(apiKey)
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.0-flash-001',
     tools: [{ googleSearchRetrieval: {} }],
   })
   const date = new Date().toISOString().slice(0, 10)
