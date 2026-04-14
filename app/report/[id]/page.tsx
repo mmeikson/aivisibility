@@ -442,17 +442,13 @@ function FoundationCard({ score, reportId }: { score: Score; reportId: string })
 
 function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: string; index: number }) {
   return (
-    <div className="flex items-center gap-4 bg-white px-5 py-3">
+    <Link
+      href={`/report/${reportId}/${rec.type}`}
+      className="flex items-center gap-4 bg-white px-5 py-3 hover:bg-[#F7F6F3] transition-colors"
+    >
       <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
       <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
-      {rec.type && (
-        <Link
-          href={`/report/${reportId}/${rec.type}`}
-          className="shrink-0 text-xs text-[#6C6C6C] hover:text-[#141414] font-mono transition-colors"
-        >
-          View →
-        </Link>
-      )}
-    </div>
+      <span className="shrink-0 text-xs text-[#6C6C6C] font-mono">→</span>
+    </Link>
   )
 }
