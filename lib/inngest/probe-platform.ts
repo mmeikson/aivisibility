@@ -244,17 +244,18 @@ export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult
 }
 
 // ---- Google direct API (gemini-2.0-flash with googleSearchRetrieval grounding) ----
-// Uses gemini-2.0-flash: fully supported by @google/generative-ai SDK + googleSearchRetrieval.
-// (gemini-2.5-flash requires the newer @google/genai SDK and is incompatible here.)
+// Uses gemini-2.5-flash with googleSearch grounding.
+// @google/generative-ai 0.24.1 types don't include googleSearch yet — cast to any.
 // Grounding redirect URLs are resolved to real URLs via HEAD request.
 
 export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const apiKey = process.env.GOOGLE_AI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY is not set')
   const client = new GoogleGenerativeAI(apiKey)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash-001',
-    tools: [{ googleSearchRetrieval: {} }],
+    model: 'gemini-2.5-flash',
+    tools: [{ googleSearch: {} } as any],
   })
   const date = new Date().toISOString().slice(0, 10)
   console.log(`[Gemini-API] starting ${probes.length} probes`)
