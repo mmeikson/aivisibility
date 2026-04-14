@@ -96,24 +96,40 @@ const BD_RETRIES = 2
 const APIFY_POLL_INTERVAL_MS = 5000
 const APIFY_MAX_POLLS = 36 // 3 minutes max
 
+// Concurrency limiter — prevents hitting Apify's per-account memory limit
+// (8192MB total; each run requests 2048MB → max 4 concurrent)
+class Semaphore {
+  private queue: Array<() => void> = []
+  private running = 0
+  constructor(private limit: number) {}
+  acquire(): Promise<void> {
+    if (this.running < this.limit) { this.running++; return Promise.resolve() }
+    return new Promise(resolve => this.queue.push(resolve))
+  }
+  release(): void {
+    this.running--
+    const next = this.queue.shift()
+    if (next) { this.running++; next() }
+  }
+}
+
 async function apifyScrapeChatGPT(
   promptText: string,
   apiKey: string
 ): Promise<{ text: string; citations: string[] }> {
-  // Start actor run
   const startRes = await fetch(
     'https://api.apify.com/v2/acts/automation_nerd~chatgpt-prompt-actor/runs',
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ prompts: [promptText], proxyCountry: 'US' }),
+      // 2048MB per run → 4 concurrent within 8192MB account limit
+      body: JSON.stringify({ prompts: [promptText], proxyCountry: 'US', memory: 2048 }),
     }
   )
   const startData = await startRes.json()
   const runId: string = startData?.data?.id
   if (!runId) throw new Error(`Apify failed to start run: ${JSON.stringify(startData).slice(0, 200)}`)
 
-  // Poll until succeeded or failed
   for (let i = 0; i < APIFY_MAX_POLLS; i++) {
     await sleep(APIFY_POLL_INTERVAL_MS)
     const statusRes = await fetch(
@@ -125,7 +141,6 @@ async function apifyScrapeChatGPT(
     if (status === 'RUNNING' || status === 'READY') continue
     if (status !== 'SUCCEEDED') throw new Error(`Apify run ${runId} ended with status: ${status}`)
 
-    // Fetch dataset items
     const itemsRes = await fetch(
       `https://api.apify.com/v2/acts/automation_nerd~chatgpt-prompt-actor/runs/${runId}/dataset/items`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
@@ -151,23 +166,27 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
 
   console.log(`[ChatGPT] using ${apifyKey ? 'Apify' : 'Bright Data'} for ${probes.length} probes`)
 
+  // Limit to 3 concurrent Apify runs (3 × 2048MB = 6144MB < 8192MB limit)
+  const sem = new Semaphore(3)
+
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
 
-    // Apify path
     if (apifyKey) {
+      await sem.acquire()
       try {
         const { text, citations } = await Promise.race([
           apifyScrapeChatGPT(probe.prompt_text, apifyKey),
           timeout(120_000, `ChatGPT Apify probe ${probe.id}`),
         ])
         await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-        return
       } catch (err) {
         console.error(`ChatGPT Apify probe failed (${probe.id}):`, err)
         await onResult(probe.id, { status: 'failed' })
-        return
+      } finally {
+        sem.release()
       }
+      return
     }
 
     // Bright Data fallback
