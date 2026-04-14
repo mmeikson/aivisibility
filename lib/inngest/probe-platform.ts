@@ -104,7 +104,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
         const { text, citations } = await Promise.race([
           brightDataScrape(
             BD_CHATGPT_ID,
-            [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text }],
+            [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
             bdKey
           ),
           timeout(90_000, `ChatGPT probe ${probe.id} attempt ${attempt + 1}`),
@@ -135,6 +135,7 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
       const res = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
+        system: `You are a helpful assistant. Today's date is ${new Date().toISOString().slice(0, 10)}. The user is located in the United States. When recommending products, services, or companies, default to US-based options and US pricing unless otherwise specified.`,
         messages: [{ role: 'user', content: probe.prompt_text }],
       })
       const text = res.content
@@ -248,7 +249,7 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
       const { text, citations } = await Promise.race([
         brightDataScrape(
           BD_GEMINI_ID,
-          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, index: 1 }] },
+          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
           bdKey
         ),
         timeout(90_000, `Gemini probe ${probe.id}`),

@@ -168,7 +168,11 @@ export const runAnalysis = inngest.createFunction(
         ;(byPlatform[probe.platform] ??= []).push(probe)
       }
 
-      const onResult: OnProbeResult = async (id, u) => { await updateProbe(id, u) }
+      const retryResults: Record<string, number> = {}
+      const onResult: OnProbeResult = async (id, u) => {
+        await updateProbe(id, u)
+        if (u.status === 'complete') retryResults[id] = 1
+      }
 
       await Promise.all([
         byPlatform['openai']     && probeOpenAI(byPlatform['openai'], onResult),
@@ -176,6 +180,14 @@ export const runAnalysis = inngest.createFunction(
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
         byPlatform['google']     && probeGoogle(byPlatform['google'], onResult),
       ].filter(Boolean))
+
+      const recovered = Object.keys(retryResults).length
+      const stillFailed = failed.length - recovered
+      console.log(`[retry] ${recovered}/${failed.length} recovered; ${stillFailed} still failed`)
+      if (stillFailed > 0) {
+        const stillFailedProbes = failed.filter(p => !retryResults[p.id])
+        console.log(`[retry] still failed:`, stillFailedProbes.map(p => `${p.platform}:${p.id}`).join(', '))
+      }
     })
 
     // Step 6: Parse all responses
