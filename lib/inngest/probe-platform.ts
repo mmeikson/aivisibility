@@ -109,12 +109,12 @@ async function brightDataScrape(
 }
 
 // ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// Concurrency capped at 2, staggered by 4s to avoid session collisions on BD.
+// Concurrency=3, staggered by 3s. No retries here — the probe-retry step handles failures.
+// With 12 probes: ceil(12/3)=4 batches × 60s = 240s worst case, safely under maxDuration=300.
 
-const BD_CONCURRENCY = 2
-const BD_STAGGER_MS  = 4_000
-const BD_RETRIES     = 3
-const BD_TIMEOUT_MS  = 120_000
+const BD_CONCURRENCY = 3
+const BD_STAGGER_MS  = 3_000
+const BD_TIMEOUT_MS  = 60_000
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const bdKey = process.env.BRIGHTDATA_API_KEY
@@ -124,27 +124,20 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
 
   await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
     const start = Date.now()
-    let lastErr: unknown
-    for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
-      if (attempt > 0) await sleep(3_000 * attempt) // back off between retries
-      try {
-        const { text, citations } = await Promise.race([
-          brightDataScrape(
-            BD_CHATGPT_ID,
-            [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-            bdKey
-          ),
-          timeout(BD_TIMEOUT_MS, `ChatGPT probe ${probe.id} attempt ${attempt + 1}`),
-        ])
-        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-        return
-      } catch (err) {
-        lastErr = err
-        console.warn(`[ChatGPT] attempt ${attempt + 1} failed (${probe.id}):`, err)
-      }
+    try {
+      const { text, citations } = await Promise.race([
+        brightDataScrape(
+          BD_CHATGPT_ID,
+          [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
+          bdKey
+        ),
+        timeout(BD_TIMEOUT_MS, `ChatGPT probe ${probe.id}`),
+      ])
+      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      console.warn(`[ChatGPT] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
     }
-    console.error(`[ChatGPT] exhausted retries (${probe.id}):`, lastErr)
-    await onResult(probe.id, { status: 'failed' })
   })
 }
 
@@ -216,7 +209,7 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
 }
 
 // ---- Google via Bright Data (real Gemini browser session) ----
-// Same concurrency/stagger strategy as ChatGPT.
+// Same concurrency/stagger/timeout strategy as ChatGPT.
 
 export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const bdKey = process.env.BRIGHTDATA_API_KEY
@@ -226,26 +219,19 @@ export async function probeGoogle(probes: Probe[], onResult: OnProbeResult): Pro
 
   await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
     const start = Date.now()
-    let lastErr: unknown
-    for (let attempt = 0; attempt < BD_RETRIES; attempt++) {
-      if (attempt > 0) await sleep(3_000 * attempt)
-      try {
-        const { text, citations } = await Promise.race([
-          brightDataScrape(
-            BD_GEMINI_ID,
-            { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-            bdKey
-          ),
-          timeout(BD_TIMEOUT_MS, `Gemini probe ${probe.id} attempt ${attempt + 1}`),
-        ])
-        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-        return
-      } catch (err) {
-        lastErr = err
-        console.warn(`[Gemini] attempt ${attempt + 1} failed (${probe.id}):`, err)
-      }
+    try {
+      const { text, citations } = await Promise.race([
+        brightDataScrape(
+          BD_GEMINI_ID,
+          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
+          bdKey
+        ),
+        timeout(BD_TIMEOUT_MS, `Gemini probe ${probe.id}`),
+      ])
+      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      console.warn(`[Gemini] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
     }
-    console.error(`[Gemini] exhausted retries (${probe.id}):`, lastErr)
-    await onResult(probe.id, { status: 'failed' })
   })
 }
