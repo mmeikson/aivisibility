@@ -60,97 +60,97 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
   )
 
   const activePlatforms = platforms.filter((p) => byPlatform[p].length > 0)
-  const [activeTab, setActiveTab] = useState<string>(activePlatforms[0] ?? 'openai')
-
-  const platformProbes = byPlatform[activeTab] ?? []
-  const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
-  const confidentCount = platformProbes.filter((p) => p.parsed_json?.recommendation_strength === 'confident').length
-
-  const byType = Object.fromEntries(
-    PROMPT_TYPES.map((type) => {
-      const typeProbes = platformProbes.filter((p) => p.prompt_type === type)
-      return [type, {
-        total: typeProbes.length,
-        mentioned: typeProbes.filter((p) => p.parsed_json?.was_mentioned).length,
-      }]
-    })
-  )
+  const [openPlatform, setOpenPlatform] = useState<string>(activePlatforms[0] ?? 'openai')
 
   return (
-    <div>
-      {/* Tab bar */}
-      <div className="flex gap-1">
-        {activePlatforms.map((platform) => (
-          <button
-            key={platform}
-            onClick={() => setActiveTab(platform)}
-            className={`px-4 py-3 text-left shrink-0 rounded-t-lg border transition-colors ${
-              activeTab === platform
-                ? 'bg-white border-[#E5E2DC] border-b-white text-[#141414] relative z-10 -mb-px'
-                : 'bg-[#FAFAF8] border-transparent text-[#ABABAB] hover:text-[#6C6C6C]'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {PLATFORM_ICONS[platform] && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={PLATFORM_ICONS[platform]} alt="" width={20} height={20} className="shrink-0" />
-              )}
-              <div className="text-sm font-semibold tracking-wide">{PLATFORM_LABELS[platform] ?? platform}</div>
-            </div>
-            <div className="text-[10px] text-[#ABABAB] mt-0.5">{ENGINE_USERS[platform]}</div>
-          </button>
-        ))}
-      </div>
+    <div className="rounded-lg border border-[#E5E2DC] overflow-hidden">
+      {activePlatforms.map((platform, idx) => {
+        const platformProbes = byPlatform[platform] ?? []
+        const isOpen = openPlatform === platform
+        const isLast = idx === activePlatforms.length - 1
 
-      {/* Platform summary */}
-      {platformSummaries[activeTab] && (
-        <div className="border-x border-t border-[#E5E2DC] bg-white px-5 py-3">
-          <p className="text-sm text-[#6C6C6C] leading-relaxed">{platformSummaries[activeTab]}</p>
-        </div>
-      )}
-
-      {/* Probe list */}
-      <div className="relative rounded-b-lg rounded-tr-lg border border-[#E5E2DC] bg-white overflow-hidden">
-        {platformProbes.map((probe, i) => {
-          const mentioned = probe.parsed_json?.was_mentioned
-          const strength = probe.parsed_json?.recommendation_strength
-          const isLast = i === platformProbes.length - 1
-
-          return (
-            <button
-              key={probe.id}
-              onClick={() => setSelected(probe)}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#F3F2EF] transition-colors group ${
-                !isLast ? 'border-b border-[#E5E2DC]' : ''
+        return (
+          <div key={platform} className={!isLast ? 'border-b border-[#E5E2DC]' : ''}>
+            {/* Accordion header */}
+            <div
+              className={`px-5 py-4 transition-colors ${
+                isOpen ? 'bg-white' : 'bg-[#FAFAF8] hover:bg-[#F3F2EF] cursor-pointer'
               }`}
+              onClick={() => { if (!isOpen) setOpenPlatform(platform) }}
             >
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  probe.status !== 'complete'
-                    ? 'bg-[#CDCBC6]'
-                    : mentioned
-                    ? 'bg-[#16a34a]'
-                    : 'bg-[#E5E2DC]'
-                }`}
-              />
-              <span className="flex-1 text-xs text-[#141414] truncate">
-                {probe.prompt_text}
-              </span>
-              <span className="shrink-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide hidden sm:block">
-                {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
-              </span>
-              {strength && strength !== 'none' && (
-                <span className={`shrink-0 text-[10px] font-mono uppercase tracking-wide ${
-                  strength === 'confident' ? 'severity-healthy' : 'severity-moderate'
-                }`}>
-                  {strength}
-                </span>
+              {/* Engine identity row */}
+              <div className="flex items-center gap-2 mb-2">
+                {PLATFORM_ICONS[platform] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={PLATFORM_ICONS[platform]} alt="" width={18} height={18} className="shrink-0" />
+                )}
+                <span className="text-sm font-semibold text-[#141414]">{PLATFORM_LABELS[platform] ?? platform}</span>
+                <span className="text-sm text-[#ABABAB]">·</span>
+                <span className="text-sm text-[#ABABAB]">{ENGINE_USERS[platform]}</span>
+              </div>
+
+              {/* Summary */}
+              {platformSummaries[platform] && (
+                <p className="text-sm text-[#141414] leading-relaxed mb-3">{platformSummaries[platform]}</p>
               )}
-              <span className="shrink-0 text-[#CDCBC6] group-hover:text-[#6C6C6C] transition-colors text-xs">→</span>
-            </button>
-          )
-        })}
-      </div>
+
+              {/* Expand / collapse link */}
+              <button
+                className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors tracking-wide"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenPlatform(isOpen ? '' : platform)
+                }}
+              >
+                {isOpen ? 'COLLAPSE ↑' : `VIEW ALL ${platformProbes.length} PROMPTS →`}
+              </button>
+            </div>
+
+            {/* Probe list */}
+            {isOpen && (
+              <div className="bg-white border-t border-[#E5E2DC]">
+                {platformProbes.map((probe, i) => {
+                  const mentioned = probe.parsed_json?.was_mentioned
+                  const strength = probe.parsed_json?.recommendation_strength
+                  const isLastProbe = i === platformProbes.length - 1
+
+                  return (
+                    <button
+                      key={probe.id}
+                      onClick={() => setSelected(probe)}
+                      className={`w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#F3F2EF] transition-colors group ${
+                        !isLastProbe ? 'border-b border-[#E5E2DC]' : ''
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          probe.status !== 'complete'
+                            ? 'bg-[#CDCBC6]'
+                            : mentioned
+                            ? 'bg-[#16a34a]'
+                            : 'bg-[#E5E2DC]'
+                        }`}
+                      />
+                      <span className="flex-1 text-xs text-[#141414] truncate">{probe.prompt_text}</span>
+                      <span className="shrink-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide hidden sm:block">
+                        {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
+                      </span>
+                      {strength && strength !== 'none' && (
+                        <span className={`shrink-0 text-[10px] font-mono uppercase tracking-wide ${
+                          strength === 'confident' ? 'severity-healthy' : 'severity-moderate'
+                        }`}>
+                          {strength}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-[#CDCBC6] group-hover:text-[#6C6C6C] transition-colors text-xs">→</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
 
       {selected && createPortal(
         <ProbeModal probe={selected} companyName={companyName} onClose={() => setSelected(null)} />,
