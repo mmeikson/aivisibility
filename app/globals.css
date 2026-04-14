@@ -11,6 +11,12 @@
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-geist-sans);
 
+  /* Bump all text sizes one step up (xs→sm, sm→base, base→lg, lg→xl) */
+  --text-xs: 0.875rem;
+  --text-sm: 1rem;
+  --text-base: 1.125rem;
+  --text-lg: 1.25rem;
+
   --color-healthy: #16a34a;
   --color-moderate: #CEAC01;
   --color-weak: #c2410c;

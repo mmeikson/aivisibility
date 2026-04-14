@@ -149,7 +149,7 @@ export default async function CategoryPage({ params }: Props) {
         <span className="text-xs text-[#6C6C6C]">Beta</span>
       </header>
 
-      <div className="flex-1 px-6 py-12 max-w-3xl mx-auto w-full space-y-12">
+      <div className="flex-1 px-6 py-12 max-w-[1200px] mx-auto w-full space-y-12">
 
         {/* Category header */}
         <div className="flex items-end justify-between gap-4 fade-up">

@@ -221,7 +221,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Save banner */}
       {showSaveBanner && (
         <div className="border-b border-[#E5E2DC] bg-white px-6 py-3">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-4">
             <p className="text-xs text-[#6C6C6C]">
               To save and share these results, please create an account.
             </p>
@@ -238,7 +238,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Saved confirmation */}
       {isOwner && (
         <div className="border-b border-[#E5E2DC] bg-[#f0fdf4] px-6 py-3">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-4">
             <p className="text-xs text-[#16a34a]">
               Saved to your account.
             </p>
@@ -255,7 +255,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Disambiguation warning */}
       {confusedProbes.length > 0 && (
         <div className="border-b border-[#fde68a] bg-[#fffbeb] px-6 py-3">
-          <div className="max-w-4xl mx-auto flex items-start gap-3">
+          <div className="max-w-[1200px] mx-auto flex items-start gap-3">
             <span className="text-[#92400e] mt-0.5">⚠</span>
             <p className="text-xs text-[#92400e] leading-relaxed">
               <span className="font-medium">Disambiguation detected</span> — {confusedProbes.length} of {probeCount} AI responses appear to describe a different company
@@ -266,7 +266,7 @@ export default async function ReportPage({ params }: Props) {
         </div>
       )}
 
-      <div className="flex-1 px-6 py-12 max-w-4xl mx-auto w-full">
+      <div className="flex-1 px-6 py-12 max-w-[1200px] mx-auto w-full">
 
         {/* Report header */}
         <div className="space-y-4 mb-12 fade-up">
