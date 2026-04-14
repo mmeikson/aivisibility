@@ -396,7 +396,6 @@ export default async function ReportPage({ params }: Props) {
         <Link href="/" className="text-xs text-[#ABABAB] hover:text-[#6C6C6C] transition-colors">
           ← New analysis
         </Link>
-        <span className="text-xs text-[#ABABAB] font-mono">v1</span>
       </footer>
     </main>
   )
@@ -441,13 +440,14 @@ function FoundationCard({ score, reportId }: { score: Score; reportId: string })
 }
 
 function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: string; index: number }) {
+  const isFirst = index === 0
   return (
     <Link
       href={`/report/${reportId}/${rec.type}`}
-      className="flex items-center gap-4 bg-white px-5 py-3 hover:bg-[#F7F6F3] transition-colors"
+      className={`flex items-center gap-4 px-5 py-3 transition-colors ${isFirst ? 'bg-[#F7F6F3] hover:bg-[#F0EEE9]' : 'bg-white hover:bg-[#F7F6F3]'}`}
     >
-      <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
-      <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
+      <span className={`score-number text-xl shrink-0 ${isFirst ? 'text-[#6C6C6C]' : 'text-[#ABABAB]'}`}>{index + 1}</span>
+      <p className={`flex-1 min-w-0 text-sm ${isFirst ? 'font-medium text-[#141414]' : 'text-[#141414]'}`}>{rec.title}</p>
       <span className="shrink-0 text-xs text-[#6C6C6C] font-mono">→</span>
     </Link>
   )
