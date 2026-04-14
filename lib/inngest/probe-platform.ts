@@ -216,6 +216,70 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
   }
 }
 
+// ---- OpenAI direct API (gpt-4o-search-preview) ----
+// Fast parallel execution via Chat Completions with live web search.
+// No temperature param — unsupported by gpt-4o-search-preview.
+
+export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult): Promise<void> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const date = new Date().toISOString().slice(0, 10)
+  await Promise.all(probes.map(async (probe) => {
+    const start = Date.now()
+    try {
+      const res = await client.chat.completions.create({
+        model: 'gpt-4o-search-preview',
+        messages: [
+          { role: 'system', content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.` },
+          { role: 'user', content: probe.prompt_text },
+        ],
+      })
+      const text = res.choices?.[0]?.message?.content ?? ''
+      if (!text.trim()) throw new Error('Empty response')
+      await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      console.error(`[ChatGPT-API] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
+    }
+  }))
+}
+
+// ---- Google direct API (gemini-2.5-flash with googleSearch grounding) ----
+// Grounding redirect URLs are resolved to real URLs via HEAD request.
+
+export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult): Promise<void> {
+  const client = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!)
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    tools: [{ googleSearchRetrieval: {} }],
+  })
+  const date = new Date().toISOString().slice(0, 10)
+  await Promise.all(probes.map(async (probe) => {
+    const start = Date.now()
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: probe.prompt_text }] }],
+        systemInstruction: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
+        generationConfig: { temperature: 0 },
+      })
+      const text = result.response.text()
+      if (!text.trim()) throw new Error('Empty response')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawUrls: string[] = (result.response.candidates?.[0]?.groundingMetadata as any)
+        ?.groundingChunks?.map((c: any) => c.web?.uri ?? '').filter(Boolean) ?? []
+      const citations = await Promise.all(
+        rawUrls.map(async (url) => {
+          try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.url }
+          catch { return url }
+        })
+      )
+      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      console.error(`[Gemini-API] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
+    }
+  }))
+}
+
 // ---- Bright Data webhook-based submission ----
 // Submits all probes to BD simultaneously with a callback URL.
 // BD processes them asynchronously and POSTs results to our webhook endpoint.

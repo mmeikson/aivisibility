@@ -2,7 +2,7 @@ import { inngest } from './client'
 import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
-import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
+import { probeOpenAI, probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -108,7 +108,20 @@ export const runAnalysis = inngest.createFunction(
 
       // ---- ChatGPT ----
       (async () => {
-        if (webhookBase) {
+        if (process.env.CHATGPT_PROVIDER === 'api') {
+          await step.run('probe-openai', async () => {
+            const probes = await getProbesByPlatform(reportId, 'openai')
+            let done = 0
+            await probeOpenAIDirect(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+              }
+            })
+            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+          })
+        } else if (webhookBase) {
           // Webhook mode: fire-and-forget to BD, wait for callback event
           await step.run('probe-openai-submit', async () => {
             const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
@@ -185,7 +198,20 @@ export const runAnalysis = inngest.createFunction(
 
       // ---- Gemini ----
       (async () => {
-        if (webhookBase) {
+        if (process.env.GEMINI_PROVIDER === 'api') {
+          await step.run('probe-google', async () => {
+            const probes = await getProbesByPlatform(reportId, 'google')
+            let done = 0
+            await probeGoogleDirect(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+              }
+            })
+            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+          })
+        } else if (webhookBase) {
           // Webhook mode
           await step.run('probe-google-submit', async () => {
             const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
@@ -250,9 +276,12 @@ export const runAnalysis = inngest.createFunction(
 
       // BD platforms (openai, google) are retried via the pending-filter mechanism
       // in their own steps — retrying them here would cause duplicate BD sessions.
+      // When using direct API providers, retry them here like anthropic/perplexity.
       await Promise.all([
         byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
+        byPlatform['openai']     && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
+        byPlatform['google']     && process.env.GEMINI_PROVIDER === 'api'  && probeGoogleDirect(byPlatform['google'], onResult),
       ].filter(Boolean))
 
       const recovered = Object.keys(retryResults).length
