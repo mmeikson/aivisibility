@@ -249,12 +249,15 @@ export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult
 // Grounding redirect URLs are resolved to real URLs via HEAD request.
 
 export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const client = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!)
+  const apiKey = process.env.GOOGLE_AI_API_KEY
+  if (!apiKey) throw new Error('GOOGLE_AI_API_KEY is not set')
+  const client = new GoogleGenerativeAI(apiKey)
   const model = client.getGenerativeModel({
     model: 'gemini-2.0-flash',
     tools: [{ googleSearchRetrieval: {} }],
   })
   const date = new Date().toISOString().slice(0, 10)
+  console.log(`[Gemini-API] starting ${probes.length} probes`)
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     try {
@@ -274,10 +277,13 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
           catch { return url }
         })
       )
+      console.log(`[Gemini-API] probe complete (${probe.id}) latency=${Date.now() - start}ms text_len=${text.length}`)
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status = (err as any)?.status
       const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[Gemini-API] probe failed (${probe.id}): ${msg}`)
+      console.error(`[Gemini-API] probe failed (${probe.id}) status=${status ?? 'n/a'}: ${msg}`)
       await onResult(probe.id, { status: 'failed' })
     }
   }))
