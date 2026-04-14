@@ -259,7 +259,10 @@ export const runAnalysis = inngest.createFunction(
     await step.run('probe-retry', async () => {
       const allProbes = await getProbesByReport(reportId)
       const failed = allProbes.filter((p) => p.status === 'failed')
-      if (failed.length === 0) return
+      if (failed.length === 0) {
+        await emitEvent(reportId, 'probe_batch_done', 'All responses received — preparing analysis...')
+        return
+      }
 
       await emitEvent(reportId, 'probe_batch_done', `Retrying ${failed.length} failed probe${failed.length !== 1 ? 's' : ''}...`)
 
