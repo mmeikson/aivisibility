@@ -305,14 +305,18 @@ export const runAnalysis = inngest.createFunction(
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 
-    // Step 6.5: Generate per-platform summaries
+    // Step 6.5: Generate per-platform summaries (non-fatal — failure skips summaries, not scoring)
     await step.run('platform-summaries', async () => {
-      const allProbes = await getProbesByReport(reportId)
-      const summaries = await generatePlatformSummaries(allProbes, inference.company_name)
-      if (Object.keys(summaries).length > 0) {
-        await updateReport(reportId, {
-          inference_json: { ...inference, platform_summaries: summaries },
-        })
+      try {
+        const allProbes = await getProbesByReport(reportId)
+        const summaries = await generatePlatformSummaries(allProbes, inference.company_name)
+        if (Object.keys(summaries).length > 0) {
+          await updateReport(reportId, {
+            inference_json: { ...inference, platform_summaries: summaries },
+          })
+        }
+      } catch (err) {
+        console.error('[platform-summaries] failed, skipping:', err instanceof Error ? err.message : err)
       }
     })
 
