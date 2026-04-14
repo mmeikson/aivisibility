@@ -87,107 +87,16 @@ async function brightDataScrape(
   throw new Error(`Bright Data snapshot ${snapshotId} timed out`)
 }
 
-// ---- OpenAI via Apify (real ChatGPT browser session) ----
-// Uses automation_nerd/chatgpt-prompt-actor — a Playwright/Camoufox actor that
-// navigates the real ChatGPT web interface. Falls back to Bright Data if APIFY_API_KEY
-// is not set.
+// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
 
 const BD_RETRIES = 2
-const APIFY_POLL_INTERVAL_MS = 5000
-const APIFY_MAX_POLLS = 36 // 3 minutes max
-
-
-// Sends all prompts in a single Apify run — one actor startup, results indexed by prompt order.
-async function apifyScrapeChatGPTBatch(
-  prompts: string[],
-  apiKey: string
-): Promise<Array<{ text: string; citations: string[] } | null>> {
-  const startRes = await fetch(
-    'https://api.apify.com/v2/acts/automation_nerd~chatgpt-prompt-actor/runs',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ prompts, proxyCountry: 'US' }),
-    }
-  )
-  const startData = await startRes.json()
-  const runId: string = startData?.data?.id
-  if (!runId) {
-    const errMsg = JSON.stringify(startData).slice(0, 300)
-    if (errMsg.includes('actor-memory-limit-exceeded')) {
-      throw Object.assign(new Error(`Apify memory limit exceeded`), { code: 'APIFY_MEMORY_LIMIT' })
-    }
-    throw new Error(`Apify failed to start run: ${errMsg}`)
-  }
-
-  console.log(`[Apify] started run ${runId} for ${prompts.length} prompts`)
-
-  // Poll until complete — batch takes longer, allow up to 10 min
-  const maxPolls = 120
-  for (let i = 0; i < maxPolls; i++) {
-    await sleep(APIFY_POLL_INTERVAL_MS)
-    const statusRes = await fetch(
-      `https://api.apify.com/v2/acts/automation_nerd~chatgpt-prompt-actor/runs/${runId}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    )
-    const { data } = await statusRes.json()
-    const status: string = data?.status ?? ''
-    if (status === 'RUNNING' || status === 'READY') continue
-    if (status !== 'SUCCEEDED') throw new Error(`Apify run ${runId} ended with status: ${status}`)
-
-    const itemsRes = await fetch(
-      `https://api.apify.com/v2/acts/automation_nerd~chatgpt-prompt-actor/runs/${runId}/dataset/items`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    )
-    const items: unknown[] = await itemsRes.json()
-    console.log(`[Apify] run ${runId} returned ${Array.isArray(items) ? items.length : 0} items`)
-
-    return prompts.map((_, idx) => {
-      const item = Array.isArray(items) ? items[idx] : null
-      if (!item || (item as { error?: string }).error) return null
-      const text: string = (item as { response?: string }).response ?? ''
-      if (!text.trim()) return null
-      const citations = ((item as { citations?: unknown[] }).citations ?? [])
-        .map((c) => (typeof c === 'string' ? c : (c as { url?: string }).url ?? ''))
-        .filter(Boolean)
-      return { text, citations }
-    })
-  }
-
-  throw new Error(`Apify run ${runId} timed out`)
-}
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const apifyKey = process.env.APIFY_API_KEY
   const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!apifyKey && !bdKey) throw new Error('APIFY_API_KEY or BRIGHTDATA_API_KEY is required for ChatGPT probes')
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
-  console.log(`[ChatGPT] using ${apifyKey ? 'Apify (batch)' : 'Bright Data'} for ${probes.length} probes`)
+  console.log(`[ChatGPT] using Bright Data for ${probes.length} probes`)
 
-  if (apifyKey) {
-    const start = Date.now()
-    try {
-      const results = await Promise.race([
-        apifyScrapeChatGPTBatch(probes.map((p) => p.prompt_text), apifyKey),
-        timeout(600_000, `ChatGPT Apify batch (${probes.length} probes)`),
-      ])
-      await Promise.all(probes.map(async (probe, idx) => {
-        const result = results[idx]
-        if (result) {
-          await onResult(probe.id, { response_text: result.text, citations: result.citations, latency_ms: Date.now() - start, status: 'complete' })
-        } else {
-          console.warn(`[Apify] no result for probe ${probe.id} (index ${idx})`)
-          await onResult(probe.id, { status: 'failed' })
-        }
-      }))
-    } catch (err) {
-      console.error(`ChatGPT Apify batch failed:`, err)
-      await Promise.all(probes.map((probe) => onResult(probe.id, { status: 'failed' })))
-    }
-    return
-  }
-
-  // Bright Data fallback
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     let lastErr: unknown
@@ -197,7 +106,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
           brightDataScrape(
             BD_CHATGPT_ID,
             [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-            bdKey!
+            bdKey
           ),
           timeout(90_000, `ChatGPT BD probe ${probe.id} attempt ${attempt + 1}`),
         ])
