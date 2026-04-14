@@ -381,7 +381,7 @@ export default async function ReportPage({ params }: Props) {
               <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">What to improve</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
             </div>
-            <div className="space-y-2">
+            <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
               {recommendations.map((rec, i) => (
                 <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
               ))}
@@ -442,7 +442,7 @@ function FoundationCard({ score, reportId }: { score: Score; reportId: string })
 
 function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: string; index: number }) {
   return (
-    <div className="flex items-center gap-4 rounded-lg border border-[#E5E2DC] bg-white px-5 py-3">
+    <div className="flex items-center gap-4 bg-white px-5 py-3">
       <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
       <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
       {rec.type && (
