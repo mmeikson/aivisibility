@@ -115,8 +115,8 @@ async function brightDataScrape(
 // filtered out before calling these functions so retries make forward progress.
 
 const BD_CONCURRENCY = 2
-const BD_STAGGER_MS  = 15_000
-const BD_TIMEOUT_MS  = 60_000
+const BD_STAGGER_MS  = 8_000
+const BD_TIMEOUT_MS  = 90_000
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const bdKey = process.env.BRIGHTDATA_API_KEY
