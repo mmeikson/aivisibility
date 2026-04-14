@@ -243,13 +243,15 @@ export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult
   }))
 }
 
-// ---- Google direct API (gemini-2.5-flash with googleSearch grounding) ----
+// ---- Google direct API (gemini-2.0-flash with googleSearchRetrieval grounding) ----
+// Uses gemini-2.0-flash: fully supported by @google/generative-ai SDK + googleSearchRetrieval.
+// (gemini-2.5-flash requires the newer @google/genai SDK and is incompatible here.)
 // Grounding redirect URLs are resolved to real URLs via HEAD request.
 
 export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!)
   const model = client.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash',
     tools: [{ googleSearchRetrieval: {} }],
   })
   const date = new Date().toISOString().slice(0, 10)
@@ -274,7 +276,8 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
       )
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
-      console.error(`[Gemini-API] probe failed (${probe.id}):`, err)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[Gemini-API] probe failed (${probe.id}): ${msg}`)
       await onResult(probe.id, { status: 'failed' })
     }
   }))
