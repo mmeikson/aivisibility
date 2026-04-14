@@ -74,11 +74,17 @@ async function brightDataScrape(
   const data = await res.json()
   const first = Array.isArray(data) ? data[0] : data
 
+  // Prefer markdown for richer display; fall back to plain text
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function bdText(obj: any): string {
+    return obj?.answer_text_markdown?.trim() || obj?.answer_text?.trim() || ''
+  }
+
   console.log(`[BD] dataset=${datasetId} status=${res.status} answer_text_len=${first?.answer_text?.length ?? 'n/a'}`)
 
-  if (res.ok && first?.answer_text?.trim()) {
+  if (res.ok && bdText(first)) {
     return {
-      text: first.answer_text,
+      text: bdText(first),
       citations: (first.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
     }
   }
@@ -97,8 +103,8 @@ async function brightDataScrape(
     const pollData = await poll.json()
     const result = Array.isArray(pollData) ? pollData[0] : pollData
     console.log(`[BD] snapshot=${snapshotId} poll_status=${poll.status} answer_text_len=${result?.answer_text?.length ?? 'n/a'}`)
-    const text = result?.answer_text ?? ''
-    if (!text.trim()) throw new Error(`BD snapshot ${snapshotId} returned empty response`)
+    const text = bdText(result)
+    if (!text) throw new Error(`BD snapshot ${snapshotId} returned empty response`)
     return {
       text,
       citations: (result.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),

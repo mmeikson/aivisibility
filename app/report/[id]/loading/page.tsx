@@ -117,6 +117,11 @@ export default function LoadingPage() {
   const isComplete = events.some((e) => e.event_type === 'complete')
   const elapsed = useElapsedTime(!isComplete && events.length > 0)
 
+  async function handleCancel() {
+    await fetch(`/api/reports/${id}/cancel`, { method: 'POST' })
+    router.push('/')
+  }
+
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
@@ -310,7 +315,14 @@ export default function LoadingPage() {
       {/* Footer */}
       <footer className="px-8 py-4 border-t border-[#E5E2DC] flex items-center justify-between">
         <span className="text-xs text-[#ABABAB]">Don&apos;t close this tab — analysis is running.</span>
-        <span className="text-xs text-[#ABABAB] font-mono">v1</span>
+        {!isComplete && (
+          <button
+            onClick={handleCancel}
+            className="text-xs text-[#ABABAB] hover:text-[#b91c1c] transition-colors font-mono"
+          >
+            Cancel
+          </button>
+        )}
       </footer>
     </main>
   )

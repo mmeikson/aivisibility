@@ -18,6 +18,7 @@ export const runAnalysis = inngest.createFunction(
     name: 'Run GEO Analysis',
     triggers: [{ event: 'report/run' }],
     concurrency: { limit: 5 },
+    cancelOn: [{ event: 'report/cancel', match: 'data.reportId' }],
   },
   async ({ event, step }: {
     event: { data: { reportId: string } }
