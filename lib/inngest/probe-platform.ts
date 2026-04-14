@@ -87,53 +87,16 @@ async function brightDataScrape(
   throw new Error(`Bright Data snapshot ${snapshotId} timed out`)
 }
 
-// ---- OpenAI ChatGPT probes ----
-// Uses gpt-4o-search-preview (live web search) if OPENAI_API_KEY is set,
-// otherwise falls back to Bright Data browser scraping.
+// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
 
 const BD_RETRIES = 2
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const openaiKey = process.env.OPENAI_API_KEY
   const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!openaiKey && !bdKey) throw new Error('OPENAI_API_KEY or BRIGHTDATA_API_KEY is required for ChatGPT probes')
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
-  if (openaiKey) {
-    console.log(`[ChatGPT] using gpt-4o-search-preview for ${probes.length} probes`)
-    const client = new OpenAI({ apiKey: openaiKey })
-    const date = new Date().toISOString().slice(0, 10)
-
-    await Promise.all(probes.map(async (probe) => {
-      const start = Date.now()
-      try {
-        const res = await client.chat.completions.create({
-          model: 'gpt-4o-search-preview',
-          web_search_options: { search_context_size: 'high' },
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
-            },
-            { role: 'user', content: probe.prompt_text },
-          ],
-        } as Parameters<typeof client.chat.completions.create>[0]) as import('openai/resources/chat/completions').ChatCompletion
-        const text = res.choices[0]?.message?.content ?? ''
-        if (!text.trim()) throw new Error('gpt-4o-search-preview returned empty response')
-        const citations = (res.choices[0]?.message as { annotations?: Array<{ url_citation?: { url: string } }> })
-          ?.annotations
-          ?.filter((a) => a.url_citation?.url)
-          .map((a) => a.url_citation!.url) ?? []
-        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-      } catch (err) {
-        console.error(`ChatGPT API probe failed (${probe.id}):`, err)
-        await onResult(probe.id, { status: 'failed' })
-      }
-    }))
-    return
-  }
-
-  // Bright Data fallback
   console.log(`[ChatGPT] using Bright Data for ${probes.length} probes`)
+
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     let lastErr: unknown
@@ -143,7 +106,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
           brightDataScrape(
             BD_CHATGPT_ID,
             [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-            bdKey!
+            bdKey
           ),
           timeout(90_000, `ChatGPT BD probe ${probe.id} attempt ${attempt + 1}`),
         ])
@@ -189,59 +152,43 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
   }))
 }
 
-// ---- Perplexity via Bright Data (real Perplexity browser session) ----
-// Falls back to sonar-pro API if BRIGHTDATA_API_KEY is not set.
+// ---- Perplexity via sonar-pro API ----
+// Uses the same model as the Perplexity Pro web experience.
 
 export async function probePerplexity(probes: Probe[], onResult: OnProbeResult): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
+  const client = new OpenAI({ apiKey: process.env.PERPLEXITY_API_KEY, baseURL: 'https://api.perplexity.ai' })
+  const date = new Date().toISOString().slice(0, 10)
 
-  // Fallback: direct Perplexity API
-  if (!bdKey) {
-    const client = new OpenAI({ apiKey: process.env.PERPLEXITY_API_KEY, baseURL: 'https://api.perplexity.ai' })
-    for (const probe of probes) {
-      const start = Date.now()
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const res = await (client.chat.completions.create as any)({
-          model: 'sonar-pro',
-          messages: [{ role: 'user', content: probe.prompt_text }],
-          max_tokens: 2048,
-          temperature: 0,
-        })
-        const text = res.choices?.[0]?.message?.content ?? ''
-        if (!text.trim()) throw new Error('Perplexity returned empty response')
-        await onResult(probe.id, {
-          response_text: text,
-          citations: res.citations ?? [],
-          latency_ms: Date.now() - start,
-          status: 'complete',
-        })
-      } catch (err) {
-        console.error(`Perplexity probe failed (${probe.id}):`, err)
-        await onResult(probe.id, { status: 'failed' })
-      }
-      await sleep(300 + Math.random() * 300)
-    }
-    return
-  }
-
-  await Promise.all(probes.map(async (probe) => {
+  for (const probe of probes) {
     const start = Date.now()
     try {
-      const { text, citations } = await Promise.race([
-        brightDataScrape(
-          BD_PERPLEXITY_ID,
-          { input: [{ url: 'https://www.perplexity.ai', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-          bdKey
-        ),
-        timeout(75_000, `Perplexity probe ${probe.id}`),
-      ])
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (client.chat.completions.create as any)({
+        model: 'sonar-pro',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
+          },
+          { role: 'user', content: probe.prompt_text },
+        ],
+        max_tokens: 2048,
+        temperature: 0,
+      })
+      const text = res.choices?.[0]?.message?.content ?? ''
+      if (!text.trim()) throw new Error('Perplexity returned empty response')
+      await onResult(probe.id, {
+        response_text: text,
+        citations: res.citations ?? [],
+        latency_ms: Date.now() - start,
+        status: 'complete',
+      })
     } catch (err) {
-      console.error(`Perplexity (Bright Data) probe failed (${probe.id}):`, err)
+      console.error(`Perplexity probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-  }))
+    await sleep(300 + Math.random() * 300)
+  }
 }
 
 // ---- Google via Bright Data (real Gemini browser session) ----
