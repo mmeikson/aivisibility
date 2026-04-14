@@ -87,16 +87,53 @@ async function brightDataScrape(
   throw new Error(`Bright Data snapshot ${snapshotId} timed out`)
 }
 
-// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
+// ---- OpenAI ChatGPT probes ----
+// Uses gpt-4o-search-preview (live web search) if OPENAI_API_KEY is set,
+// otherwise falls back to Bright Data browser scraping.
 
 const BD_RETRIES = 2
 
 export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Promise<void> {
+  const openaiKey = process.env.OPENAI_API_KEY
   const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
+  if (!openaiKey && !bdKey) throw new Error('OPENAI_API_KEY or BRIGHTDATA_API_KEY is required for ChatGPT probes')
 
+  if (openaiKey) {
+    console.log(`[ChatGPT] using gpt-4o-search-preview for ${probes.length} probes`)
+    const client = new OpenAI({ apiKey: openaiKey })
+    const date = new Date().toISOString().slice(0, 10)
+
+    await Promise.all(probes.map(async (probe) => {
+      const start = Date.now()
+      try {
+        const res = await client.chat.completions.create({
+          model: 'gpt-4o-search-preview',
+          web_search_options: { search_context_size: 'high' },
+          messages: [
+            {
+              role: 'system',
+              content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
+            },
+            { role: 'user', content: probe.prompt_text },
+          ],
+        } as Parameters<typeof client.chat.completions.create>[0]) as import('openai/resources/chat/completions').ChatCompletion
+        const text = res.choices[0]?.message?.content ?? ''
+        if (!text.trim()) throw new Error('gpt-4o-search-preview returned empty response')
+        const citations = (res.choices[0]?.message as { annotations?: Array<{ url_citation?: { url: string } }> })
+          ?.annotations
+          ?.filter((a) => a.url_citation?.url)
+          .map((a) => a.url_citation!.url) ?? []
+        await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+      } catch (err) {
+        console.error(`ChatGPT API probe failed (${probe.id}):`, err)
+        await onResult(probe.id, { status: 'failed' })
+      }
+    }))
+    return
+  }
+
+  // Bright Data fallback
   console.log(`[ChatGPT] using Bright Data for ${probes.length} probes`)
-
   await Promise.all(probes.map(async (probe) => {
     const start = Date.now()
     let lastErr: unknown
@@ -106,7 +143,7 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
           brightDataScrape(
             BD_CHATGPT_ID,
             [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-            bdKey
+            bdKey!
           ),
           timeout(90_000, `ChatGPT BD probe ${probe.id} attempt ${attempt + 1}`),
         ])
