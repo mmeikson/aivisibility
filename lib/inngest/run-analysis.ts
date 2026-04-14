@@ -180,11 +180,11 @@ export const runAnalysis = inngest.createFunction(
         if (u.status === 'complete') retryResults[id] = 1
       }
 
+      // BD platforms (openai, google) are retried via the pending-filter mechanism
+      // in their own steps — retrying them here would cause duplicate BD sessions.
       await Promise.all([
-        byPlatform['openai']     && probeOpenAI(byPlatform['openai'], onResult),
         byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
-        byPlatform['google']     && probeGoogle(byPlatform['google'], onResult),
       ].filter(Boolean))
 
       const recovered = Object.keys(retryResults).length
