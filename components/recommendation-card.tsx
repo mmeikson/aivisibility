@@ -62,14 +62,7 @@ function renderMarkdown(text: string): string {
 
 export function RecommendationCard({ rec, index }: { rec: Recommendation; index: number }) {
   const [modalOpen, setModalOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const effort = rec.effort?.toLowerCase() ?? 'medium'
-
-  function handleCopy() {
-    navigator.clipboard.writeText(rec.copy_asset_text!)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   return (
     <>
@@ -156,10 +149,10 @@ export function RecommendationCard({ rec, index }: { rec: Recommendation; index:
             </div>
             <div className="px-5 py-3 border-t border-[#E5E2DC] flex justify-end">
               <button
-                onClick={handleCopy}
-                className="text-xs font-mono transition-colors text-[#6C6C6C] hover:text-[#141414]"
+                onClick={() => navigator.clipboard.writeText(rec.copy_asset_text!)}
+                className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors"
               >
-                {copied ? <span className="text-[#16a34a]">Copied!</span> : 'Copy to clipboard'}
+                Copy to clipboard
               </button>
             </div>
           </div>
