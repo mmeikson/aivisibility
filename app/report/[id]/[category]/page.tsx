@@ -94,40 +94,6 @@ const COMPONENT_MAX: Record<string, number> = {
 
 const EFFORT_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 }
 
-type RecContext = 'website' | 'owned_platforms' | 'outreach'
-
-const CONTEXT_LABELS: Record<RecContext, string> = {
-  website: 'Your Website',
-  owned_platforms: 'Review & Directory Platforms',
-  outreach: 'Outreach & PR',
-}
-
-const CONTEXT_DESCRIPTIONS: Record<RecContext, string> = {
-  website: 'Changes you can make directly on your own domain — content, structure, and schema.',
-  owned_platforms: 'Updates to profiles and listings you control on third-party platforms like G2, LinkedIn, and Crunchbase.',
-  outreach: 'Actions that require engaging journalists, communities, or external partners to build third-party mentions.',
-}
-
-const CONTEXT_ORDER: RecContext[] = ['website', 'owned_platforms', 'outreach']
-
-function inferContext(rec: { actions: string[]; title: string }): RecContext {
-  const text = [...rec.actions, rec.title].join(' ').toLowerCase()
-
-  const ownedPlatformTerms = ['g2', 'capterra', 'linkedin', 'crunchbase', 'product hunt',
-    'trustpilot', 'app store', 'google play', 'yelp', 'glassdoor', 'clutch',
-    'your profile', 'your listing', 'review platform', 'directory', 'social profile',
-    'twitter', 'facebook', 'instagram', 'youtube channel']
-  if (ownedPlatformTerms.some((t) => text.includes(t))) return 'owned_platforms'
-
-  const outreachTerms = ['reach out', 'pitch', 'journalist', 'blogger', 'press release',
-    'pr ', 'reddit', 'community', 'guest post', 'podcast', 'newsletter', 'publication',
-    'media outlet', 'editor', 'reporter', 'backlink', 'link building', 'partner',
-    'forum', 'quora', 'hacker news', 'third-party', 'outreach']
-  if (outreachTerms.some((t) => text.includes(t))) return 'outreach'
-
-  return 'website'
-}
-
 function severityLabel(score: number): string {
   if (score >= 80) return 'Healthy'
   if (score >= 60) return 'Moderate'
@@ -167,11 +133,6 @@ export default async function CategoryPage({ params }: Props) {
       const eb = EFFORT_ORDER[b.effort?.toLowerCase() ?? 'medium'] ?? 1
       return ea - eb || b.priority - a.priority
     })
-
-  // Group by context, preserving CONTEXT_ORDER
-  const recsByContext = Object.fromEntries(
-    CONTEXT_ORDER.map((ctx) => [ctx, recs.filter((r) => inferContext(r) === ctx)])
-  ) as Record<RecContext, typeof recs>
 
   const components = Object.entries(score.component_scores_json)
 
@@ -247,23 +208,19 @@ export default async function CategoryPage({ params }: Props) {
           </div>
         </div>
 
-        {/* Recommendations grouped by context */}
+        {/* Recommendations */}
         {recs.length > 0 && (
-          <div className="space-y-10 fade-up fade-up-2">
-            {CONTEXT_ORDER.filter((ctx) => recsByContext[ctx].length > 0).map((ctx) => (
-              <div key={ctx} className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">{CONTEXT_LABELS[ctx]}</span>
-                  <span className="flex-1 h-px bg-[#E5E2DC]" />
-                </div>
-                <p className="text-xs text-[#ABABAB] -mt-2">{CONTEXT_DESCRIPTIONS[ctx]}</p>
-                <div className="space-y-4">
-                  {recsByContext[ctx].map((rec, i) => (
-                    <RecommendationCard key={rec.id} rec={rec} index={i} />
-                  ))}
-                </div>
-              </div>
-            ))}
+          <div className="space-y-4 fade-up fade-up-2">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Recommendations</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
+
+            <div className="space-y-4">
+              {recs.map((rec, i) => (
+                <RecommendationCard key={rec.id} rec={rec} index={i} />
+              ))}
+            </div>
           </div>
         )}
 
