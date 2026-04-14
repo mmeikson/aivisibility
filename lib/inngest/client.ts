@@ -7,7 +7,16 @@ export type Events = {
   'report/run': {
     data: { reportId: string }
   }
+  'report/cancel': {
+    data: { reportId: string }
+  }
   'report/probe-platform': {
     data: { reportId: string; probeId: string; platform: string }
+  }
+  'probes/openai-complete': {
+    data: { reportId: string }
+  }
+  'probes/google-complete': {
+    data: { reportId: string }
   }
 }

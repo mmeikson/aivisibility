@@ -2,7 +2,7 @@ import { inngest } from './client'
 import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
-import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle, type OnProbeResult } from './probe-platform'
+import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -24,6 +24,7 @@ export const runAnalysis = inngest.createFunction(
     event: { data: { reportId: string } }
     step: {
       run: <T>(id: string, fn: () => Promise<T>) => Promise<T>
+      waitForEvent: <T = unknown>(id: string, opts: { event: string; timeout: string; match?: string }) => Promise<T | null>
     }
   }) => {
     const { reportId } = event.data
@@ -99,23 +100,58 @@ export const runAnalysis = inngest.createFunction(
     })
 
     // Step 5: Run all 4 platforms in parallel
-    await Promise.all([
-      step.run('probe-openai', async () => {
-        // Filter to pending only — step may be retried if it times out, and
-        // already-completed probes should not be re-run.
-        const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
-        const total = (await getProbesByPlatform(reportId, 'openai')).length
-        let done = total - probes.length // already completed on prior attempt
-        await probeOpenAI(probes, async (id, u) => {
-          await updateProbe(id, u)
-          if (u.status === 'complete' || u.status === 'failed') {
-            done++
-            await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
-          }
-        })
-        await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
-      }),
+    // ChatGPT and Gemini use BD webhooks when BRIGHTDATA_WEBHOOK_URL is set (production).
+    // Without it they fall back to polling (local dev).
+    const webhookBase = process.env.BRIGHTDATA_WEBHOOK_URL
 
+    await Promise.all([
+
+      // ---- ChatGPT ----
+      (async () => {
+        if (webhookBase) {
+          // Webhook mode: fire-and-forget to BD, wait for callback event
+          await step.run('probe-openai-submit', async () => {
+            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
+            if (probes.length === 0) return
+            await submitOpenAIProbes(probes, webhookBase, reportId)
+            const total = (await getProbesByPlatform(reportId, 'openai')).length
+            await emitEvent(reportId, 'probe_progress', `ChatGPT: 0 of ${total} responses received`)
+          })
+          await step.waitForEvent('probe-openai-wait', {
+            event: 'probes/openai-complete',
+            timeout: '15m',
+            match: 'data.reportId',
+          })
+          await step.run('probe-openai-done', async () => {
+            const probes = await getProbesByPlatform(reportId, 'openai')
+            // Mark any still-pending probes as failed (webhook timeout)
+            await Promise.all(
+              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
+            )
+            const done = probes.filter(p => p.status === 'complete').length
+            const total = probes.length
+            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
+            console.log(`[ChatGPT] ${done}/${total} complete`)
+          })
+        } else {
+          // Polling fallback (local dev — no public webhook URL)
+          await step.run('probe-openai', async () => {
+            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
+            const total = (await getProbesByPlatform(reportId, 'openai')).length
+            let done = total - probes.length
+            await probeOpenAI(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
+              }
+            })
+            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
+          })
+        }
+      })(),
+
+      // ---- Anthropic ----
       step.run('probe-anthropic', async () => {
         const probes = await getProbesByPlatform(reportId, 'anthropic')
         let done = 0
@@ -129,6 +165,7 @@ export const runAnalysis = inngest.createFunction(
         await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
       }),
 
+      // ---- Perplexity ----
       step.run('probe-perplexity', async () => {
         if (!process.env.PERPLEXITY_API_KEY && !process.env.BRIGHTDATA_API_KEY) {
           await emitEvent(reportId, 'probe_batch_done', 'Perplexity: skipped (no API key)')
@@ -146,19 +183,50 @@ export const runAnalysis = inngest.createFunction(
         await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
       }),
 
-      step.run('probe-google', async () => {
-        const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
-        const total = (await getProbesByPlatform(reportId, 'google')).length
-        let done = total - probes.length
-        await probeGoogle(probes, async (id, u) => {
-          await updateProbe(id, u)
-          if (u.status === 'complete' || u.status === 'failed') {
-            done++
-            await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
-          }
-        })
-        await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
-      }),
+      // ---- Gemini ----
+      (async () => {
+        if (webhookBase) {
+          // Webhook mode
+          await step.run('probe-google-submit', async () => {
+            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
+            if (probes.length === 0) return
+            await submitGoogleProbes(probes, webhookBase, reportId)
+            const total = (await getProbesByPlatform(reportId, 'google')).length
+            await emitEvent(reportId, 'probe_progress', `Gemini: 0 of ${total} responses received`)
+          })
+          await step.waitForEvent('probe-google-wait', {
+            event: 'probes/google-complete',
+            timeout: '15m',
+            match: 'data.reportId',
+          })
+          await step.run('probe-google-done', async () => {
+            const probes = await getProbesByPlatform(reportId, 'google')
+            await Promise.all(
+              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
+            )
+            const done = probes.filter(p => p.status === 'complete').length
+            const total = probes.length
+            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
+            console.log(`[Gemini] ${done}/${total} complete`)
+          })
+        } else {
+          // Polling fallback (local dev)
+          await step.run('probe-google', async () => {
+            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
+            const total = (await getProbesByPlatform(reportId, 'google')).length
+            let done = total - probes.length
+            await probeGoogle(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
+              }
+            })
+            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
+          })
+        }
+      })(),
+
     ])
 
     // Step 5.5: Retry failed probes once

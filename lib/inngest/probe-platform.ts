@@ -216,6 +216,72 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
   }
 }
 
+// ---- Bright Data webhook-based submission ----
+// Submits all probes to BD simultaneously with a callback URL.
+// BD processes them asynchronously and POSTs results to our webhook endpoint.
+// No polling, no timeouts — Inngest step.waitForEvent handles the wait.
+
+async function triggerBD(
+  datasetId: string,
+  body: unknown,
+  webhookUrl: string,
+  apiKey: string,
+  label: string,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.brightdata.com/datasets/v3/trigger?dataset_id=${datasetId}&format=json&notify=true&endpoint=${encodeURIComponent(webhookUrl)}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }
+  )
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`BD trigger failed for ${label}: ${res.status} ${text}`)
+  }
+}
+
+export async function submitOpenAIProbes(
+  probes: Probe[],
+  webhookBase: string,
+  reportId: string,
+): Promise<void> {
+  const bdKey = process.env.BRIGHTDATA_API_KEY
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
+  console.log(`[ChatGPT] submitting ${probes.length} probes via BD webhook`)
+  for (const probe of probes) {
+    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=openai`
+    await triggerBD(
+      BD_CHATGPT_ID,
+      [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
+      endpoint,
+      bdKey,
+      `ChatGPT probe ${probe.id}`,
+    )
+  }
+}
+
+export async function submitGoogleProbes(
+  probes: Probe[],
+  webhookBase: string,
+  reportId: string,
+): Promise<void> {
+  const bdKey = process.env.BRIGHTDATA_API_KEY
+  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
+  console.log(`[Gemini] submitting ${probes.length} probes via BD webhook`)
+  for (const probe of probes) {
+    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=google`
+    await triggerBD(
+      BD_GEMINI_ID,
+      { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
+      endpoint,
+      bdKey,
+      `Gemini probe ${probe.id}`,
+    )
+  }
+}
+
 // ---- Google via Bright Data (real Gemini browser session) ----
 // Same concurrency/stagger/timeout strategy as ChatGPT.
 
