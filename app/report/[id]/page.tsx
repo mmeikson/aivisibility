@@ -17,6 +17,13 @@ const CATEGORY_LABELS: Record<ScoreCategory, string> = {
   social_proof: 'Social Proof',
 }
 
+const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
+  category_association: 'Whether AI models associate your brand with your product category and recommend you in discovery queries.',
+  retrieval: 'Whether AI models with web search retrieve and cite your website when answering relevant queries.',
+  entity: 'Whether AI models correctly identify your brand as a distinct entity and avoid confusing it with others.',
+  social_proof: 'Whether third-party reviews, mentions, and endorsements reinforce your brand in AI training data.',
+}
+
 function buildSummary(
   companyName: string,
   category: string,
@@ -221,7 +228,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Save banner */}
       {showSaveBanner && (
         <div className="border-b border-[#E5E2DC] bg-white px-6 py-3">
-          <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-[1024px] mx-auto flex items-center justify-between gap-4">
             <p className="text-xs text-[#6C6C6C]">
               To save and share these results, please create an account.
             </p>
@@ -238,7 +245,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Saved confirmation */}
       {isOwner && (
         <div className="border-b border-[#E5E2DC] bg-[#f0fdf4] px-6 py-3">
-          <div className="max-w-[1200px] mx-auto flex items-center justify-between gap-4">
+          <div className="max-w-[1024px] mx-auto flex items-center justify-between gap-4">
             <p className="text-xs text-[#16a34a]">
               Saved to your account.
             </p>
@@ -255,7 +262,7 @@ export default async function ReportPage({ params }: Props) {
       {/* Disambiguation warning */}
       {confusedProbes.length > 0 && (
         <div className="border-b border-[#fde68a] bg-[#fffbeb] px-6 py-3">
-          <div className="max-w-[1200px] mx-auto flex items-start gap-3">
+          <div className="max-w-[1024px] mx-auto flex items-start gap-3">
             <span className="text-[#92400e] mt-0.5">⚠</span>
             <p className="text-xs text-[#92400e] leading-relaxed">
               <span className="font-medium">Disambiguation detected</span> — {confusedProbes.length} of {probeCount} AI responses appear to describe a different company
@@ -266,7 +273,7 @@ export default async function ReportPage({ params }: Props) {
         </div>
       )}
 
-      <div className="flex-1 px-6 py-12 max-w-[1200px] mx-auto w-full">
+      <div className="flex-1 px-6 py-12 max-w-[1024px] mx-auto w-full">
 
         {/* Report header */}
         <div className="space-y-4 mb-12 fade-up">
@@ -405,6 +412,7 @@ export default async function ReportPage({ params }: Props) {
 function FoundationCard({ score, reportId }: { score: Score; reportId: string }) {
   const cat = score.category as ScoreCategory
   const label = CATEGORY_LABELS[cat] ?? cat
+  const description = CATEGORY_DESCRIPTIONS[cat]
   const sev = severityLabel(score.raw_score)
   const sevClass = severityClass(score.raw_score)
   const bgClass = severityBgClass(score.raw_score)
@@ -433,6 +441,9 @@ function FoundationCard({ score, reportId }: { score: Score; reportId: string })
           style={{ width: `${score.raw_score}%` }}
         />
       </div>
+      {description && (
+        <p className="text-xs text-[#ABABAB] leading-relaxed mb-3">{description}</p>
+      )}
       <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
         See recommendations <span>→</span>
       </span>
