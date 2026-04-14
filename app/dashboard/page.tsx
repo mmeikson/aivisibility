@@ -7,6 +7,14 @@ import { createServiceClient } from '@/lib/db/client'
 import SignOutButton from './sign-out-button'
 import type { Report } from '@/lib/db/types'
 
+function formatDuration(createdAt: string, completedAt: string | null): string {
+  if (!completedAt) return '—'
+  const secs = Math.round((new Date(completedAt).getTime() - new Date(createdAt).getTime()) / 1000)
+  const m = Math.floor(secs / 60)
+  const s = secs % 60
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`
+}
+
 async function getUserReports(userId: string): Promise<(Report & { avg_score: number | null })[]> {
   const db = createServiceClient()
   const { data } = await db
@@ -92,10 +100,11 @@ export default async function DashboardPage() {
           ) : (
             <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
               {/* Table header */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-3 border-b border-[#E5E2DC] text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 border-b border-[#E5E2DC] text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">
                 <span>URL</span>
                 <span className="text-right w-20">Score</span>
                 <span className="text-right w-20">Status</span>
+                <span className="text-right w-16">Time</span>
                 <span className="text-right w-28">Date</span>
               </div>
 
@@ -103,7 +112,7 @@ export default async function DashboardPage() {
                 <Link
                   key={report.id}
                   href={`/report/${report.id}`}
-                  className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-5 py-4 hover:bg-[#F3F2EF] transition-colors group ${
+                  className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-5 py-4 hover:bg-[#F3F2EF] transition-colors group ${
                     i < reports.length - 1 ? 'border-b border-[#E5E2DC]' : ''
                   }`}
                 >
@@ -132,6 +141,12 @@ export default async function DashboardPage() {
                         {severityLabel(report.avg_score)}
                       </span>
                     ) : null}
+                  </div>
+
+                  <div className="text-right w-16">
+                    <span className="text-xs font-mono text-[#ABABAB]">
+                      {formatDuration(report.created_at, report.completed_at)}
+                    </span>
                   </div>
 
                   <div className="text-right w-28">

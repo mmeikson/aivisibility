@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseClient } from '@/lib/db/client'
@@ -23,6 +23,22 @@ function progressPercent(events: PipelineEvent[]): number {
   if (!lastStep) return 4
   const idx = STEP_ORDER.indexOf(lastStep)
   return Math.round(((idx + 1) / STEP_ORDER.length) * 100)
+}
+
+function useElapsedTime(running: boolean) {
+  const [elapsed, setElapsed] = useState(0)
+  const startRef = useRef(Date.now())
+
+  useEffect(() => {
+    if (!running) return
+    startRef.current = Date.now()
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000)
+    return () => clearInterval(interval)
+  }, [running])
+
+  const m = Math.floor(elapsed / 60)
+  const s = elapsed % 60
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`
 }
 
 export default function LoadingPage() {
@@ -99,6 +115,7 @@ export default function LoadingPage() {
 
   const progress = progressPercent(events)
   const isComplete = events.some((e) => e.event_type === 'complete')
+  const elapsed = useElapsedTime(!isComplete && events.length > 0)
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -145,7 +162,9 @@ export default function LoadingPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-xs font-mono text-[#ABABAB]">{progress}%</span>
-              <span className="text-xs text-[#ABABAB]">~2–4 min</span>
+              <span className="text-xs font-mono text-[#ABABAB]">
+                {isComplete ? elapsed : `${elapsed} · ~2–4 min`}
+              </span>
             </div>
           </div>
 
