@@ -402,14 +402,17 @@ export const runAnalysis = inngest.createFunction(
       // Re-fetch scores from DB to get their actual UUIDs
       const dbScores = await getScoresByReport(reportId)
 
-      await Promise.all(
-        dbScores.map(async (score) => {
+      // Sequential — concurrent Anthropic calls hit the rate limit and loop-retry the step
+      for (const score of dbScores) {
+        try {
           const recs = await generateRecommendations(score, inference)
           await insertRecommendations(
             recs.map((r) => ({ ...r, score_id: score.id, report_id: reportId }))
           )
-        })
-      )
+        } catch (err) {
+          console.error(`[recommendations] failed for ${score.category}, skipping:`, err instanceof Error ? err.message : err)
+        }
+      }
 
       await updateReport(reportId, { status: 'complete', completed_at: new Date().toISOString() })
       await emitEvent(reportId, 'complete', 'Analysis complete')
