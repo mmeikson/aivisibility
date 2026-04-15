@@ -1,5 +1,24 @@
 import { inngest } from './client'
 import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
+
+// Polls the report status every 2s and aborts the controller when the report
+// is no longer running (i.e. cancelled). Call stop() when the step completes
+// normally so the polling loop exits cleanly.
+function startCancellationWatch(reportId: string): { signal: AbortSignal; stop: () => void } {
+  const ac = new AbortController()
+  let stopped = false
+  ;(async () => {
+    while (!stopped && !ac.signal.aborted) {
+      await new Promise((r) => setTimeout(r, 2000))
+      if (stopped || ac.signal.aborted) return
+      try {
+        const report = await getReport(reportId)
+        if (report?.status !== 'running') { ac.abort(); return }
+      } catch { /* ignore transient DB errors */ }
+    }
+  })()
+  return { signal: ac.signal, stop: () => { stopped = true; ac.abort() } }
+}
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes } from '@/lib/inference'
 import { probeOpenAI, probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
@@ -111,15 +130,18 @@ export const runAnalysis = inngest.createFunction(
         if (process.env.CHATGPT_PROVIDER === 'api') {
           await step.run('probe-openai', async () => {
             const probes = await getProbesByPlatform(reportId, 'openai')
-            let done = 0
-            await probeOpenAIDirect(probes, async (id, u) => {
-              await updateProbe(id, u)
-              if (u.status === 'complete' || u.status === 'failed') {
-                done++
-                await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
-              }
-            })
-            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+            const { signal, stop } = startCancellationWatch(reportId)
+            try {
+              let done = 0
+              await probeOpenAIDirect(probes, async (id, u) => {
+                await updateProbe(id, u)
+                if (u.status === 'complete' || u.status === 'failed') {
+                  done++
+                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+                }
+              }, signal)
+              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+            } finally { stop() }
           })
         } else if (webhookBase) {
           // Webhook mode: fire-and-forget to BD, wait for callback event
@@ -152,14 +174,17 @@ export const runAnalysis = inngest.createFunction(
             const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
             const total = (await getProbesByPlatform(reportId, 'openai')).length
             let done = total - probes.length
-            await probeOpenAI(probes, async (id, u) => {
-              await updateProbe(id, u)
-              if (u.status === 'complete' || u.status === 'failed') {
-                done++
-                await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
-              }
-            })
-            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
+            const { signal, stop } = startCancellationWatch(reportId)
+            try {
+              await probeOpenAI(probes, async (id, u) => {
+                await updateProbe(id, u)
+                if (u.status === 'complete' || u.status === 'failed') {
+                  done++
+                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
+                }
+              }, signal)
+              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
+            } finally { stop() }
           })
         }
       })(),
@@ -167,15 +192,18 @@ export const runAnalysis = inngest.createFunction(
       // ---- Anthropic ----
       step.run('probe-anthropic', async () => {
         const probes = await getProbesByPlatform(reportId, 'anthropic')
-        let done = 0
-        await probeAnthropic(probes, async (id, u) => {
-          await updateProbe(id, u)
-          if (u.status === 'complete' || u.status === 'failed') {
-            done++
-            await emitEvent(reportId, 'probe_progress', `Claude: ${done} of ${probes.length} responses received`)
-          }
-        })
-        await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
+        const { signal, stop } = startCancellationWatch(reportId)
+        try {
+          let done = 0
+          await probeAnthropic(probes, async (id, u) => {
+            await updateProbe(id, u)
+            if (u.status === 'complete' || u.status === 'failed') {
+              done++
+              await emitEvent(reportId, 'probe_progress', `Claude: ${done} of ${probes.length} responses received`)
+            }
+          }, signal)
+          await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
+        } finally { stop() }
       }),
 
       // ---- Perplexity ----
@@ -185,15 +213,18 @@ export const runAnalysis = inngest.createFunction(
           return
         }
         const probes = await getProbesByPlatform(reportId, 'perplexity')
-        let done = 0
-        await probePerplexity(probes, async (id, u) => {
-          await updateProbe(id, u)
-          if (u.status === 'complete' || u.status === 'failed') {
-            done++
-            await emitEvent(reportId, 'probe_progress', `Perplexity: ${done} of ${probes.length} responses received`)
-          }
-        })
-        await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
+        const { signal, stop } = startCancellationWatch(reportId)
+        try {
+          let done = 0
+          await probePerplexity(probes, async (id, u) => {
+            await updateProbe(id, u)
+            if (u.status === 'complete' || u.status === 'failed') {
+              done++
+              await emitEvent(reportId, 'probe_progress', `Perplexity: ${done} of ${probes.length} responses received`)
+            }
+          }, signal)
+          await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
+        } finally { stop() }
       }),
 
       // ---- Gemini ----
@@ -201,15 +232,18 @@ export const runAnalysis = inngest.createFunction(
         if (process.env.GEMINI_PROVIDER === 'api') {
           await step.run('probe-google', async () => {
             const probes = await getProbesByPlatform(reportId, 'google')
-            let done = 0
-            await probeGoogleDirect(probes, async (id, u) => {
-              await updateProbe(id, u)
-              if (u.status === 'complete' || u.status === 'failed') {
-                done++
-                await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
-              }
-            })
-            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+            const { signal, stop } = startCancellationWatch(reportId)
+            try {
+              let done = 0
+              await probeGoogleDirect(probes, async (id, u) => {
+                await updateProbe(id, u)
+                if (u.status === 'complete' || u.status === 'failed') {
+                  done++
+                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+                }
+              }, signal)
+              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+            } finally { stop() }
           })
         } else if (webhookBase) {
           // Webhook mode
@@ -241,14 +275,17 @@ export const runAnalysis = inngest.createFunction(
             const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
             const total = (await getProbesByPlatform(reportId, 'google')).length
             let done = total - probes.length
-            await probeGoogle(probes, async (id, u) => {
-              await updateProbe(id, u)
-              if (u.status === 'complete' || u.status === 'failed') {
-                done++
-                await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
-              }
-            })
-            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
+            const { signal, stop } = startCancellationWatch(reportId)
+            try {
+              await probeGoogle(probes, async (id, u) => {
+                await updateProbe(id, u)
+                if (u.status === 'complete' || u.status === 'failed') {
+                  done++
+                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
+                }
+              }, signal)
+              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
+            } finally { stop() }
           })
         }
       })(),
