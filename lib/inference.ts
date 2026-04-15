@@ -8,7 +8,7 @@ function getClient() {
 
 export interface GeneratedProbe {
   prompt_text: string
-  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done'
+  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check'
 }
 
 // ---- Business understanding ----
@@ -109,11 +109,31 @@ Rules:
   const text = response.content[0].type === 'text' ? response.content[0].text : '[]'
   const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
 
-  const probes = JSON.parse(jsonStr) as GeneratedProbe[]
+  const llmProbes = JSON.parse(jsonStr) as GeneratedProbe[]
+
+  // Entity check probes: measure what AI models know about the brand directly
+  const entityCheckProbes: GeneratedProbe[] = [
+    {
+      prompt_text: `What is ${inference.company_name}? Describe what they do and who they serve.`,
+      prompt_type: 'entity_check',
+    },
+    {
+      prompt_text: `Tell me about ${inference.company_name} — what product or service do they offer?`,
+      prompt_type: 'entity_check',
+    },
+  ]
+
+  // Pairwise probes: direct competitive displacement (up to 3 competitors)
+  const pairwiseProbes: GeneratedProbe[] = inference.competitors.slice(0, 3).map((competitor) => ({
+    prompt_text: `Which is better for ${inference.primary_use_case}: ${inference.company_name} or ${competitor}? Recommend one.`,
+    prompt_type: 'pairwise' as const,
+  }))
+
+  const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes]
 
   // Deduplicate by normalized prompt text
   const seen = new Set<string>()
-  return probes.filter((p) => {
+  return allProbes.filter((p) => {
     const key = p.prompt_text.toLowerCase().trim()
     if (seen.has(key)) return false
     seen.add(key)

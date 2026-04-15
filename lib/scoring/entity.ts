@@ -29,11 +29,15 @@ export async function scoreEntity(
   probes: Probe[] = []
 ): Promise<{ raw_score: number; component_scores_json: Record<string, number> }> {
 
-  // Component 1: Description specificity (10 pts) — use confidence from inference
-  const descConfidence = inference.confidence?.canonical_description ?? 'medium'
-  const specificityScore = descConfidence === 'high' ? 10 : descConfidence === 'medium' ? 5 : 0
+  // Component 1: AI knowledge (20 pts)
+  // Measures what AI models actually know about the brand from entity_check probes.
+  // Neutral default of 10 pts when no entity_check probes exist yet.
+  const entityProbes = probes.filter((p) => p.prompt_type === 'entity_check' && p.parsed_json)
+  const knownCount = entityProbes.filter((p) => p.parsed_json!.was_mentioned).length
+  const aiKnowledgeScore =
+    entityProbes.length > 0 ? Math.round((knownCount / entityProbes.length) * 20) : 10
 
-  // Component 2: Profile completeness (25 pts) — 6-7pts per platform found via SerpAPI
+  // Component 2: Profile completeness (15 pts) — presence on major B2B/discovery platforms
   const profileChecks = await Promise.allSettled([
     serpSearch(`${inference.company_name} site:g2.com`),
     serpSearch(`${inference.company_name} site:linkedin.com`),
@@ -41,7 +45,7 @@ export async function scoreEntity(
     serpSearch(`${inference.company_name} site:capterra.com`),
   ])
   const profileDomains = ['g2.com', 'linkedin.com', 'crunchbase.com', 'capterra.com']
-  const profileWeights = [7, 6, 6, 6] // g2 weighted slightly higher
+  const profileWeights = [4, 4, 4, 3] // sums to 15
   let profileScore = 0
   profileChecks.forEach((result, i) => {
     if (result.status === 'fulfilled' && domainPresent(result.value, profileDomains[i])) {
@@ -99,12 +103,15 @@ export async function scoreEntity(
     else disambiguationScore = 30
   }
 
-  const raw_score = Math.min(100, specificityScore + profileScore + wikipediaScore + consistencyScore + disambiguationScore)
+  const raw_score = Math.min(
+    100,
+    aiKnowledgeScore + profileScore + wikipediaScore + consistencyScore + disambiguationScore
+  )
 
   return {
     raw_score,
     component_scores_json: {
-      description_specificity: specificityScore,
+      ai_knowledge: aiKnowledgeScore,
       profile_completeness: profileScore,
       wikipedia_presence: wikipediaScore,
       description_consistency: consistencyScore,
