@@ -38,6 +38,7 @@ export const runAnalysis = inngest.createFunction(
     triggers: [{ event: 'report/run' }],
     concurrency: { limit: 5 },
     cancelOn: [{ event: 'report/cancel', match: 'data.reportId' }],
+    retries: 2,
   },
   async ({ event, step }: {
     event: { data: { reportId: string } }
