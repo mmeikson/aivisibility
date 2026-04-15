@@ -59,7 +59,22 @@ ${pageContent}`,
   // Strip markdown code fences if present
   const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
 
-  return JSON.parse(jsonStr) as InferenceResult
+  try {
+    return JSON.parse(jsonStr) as InferenceResult
+  } catch {
+    console.error('[inferBusinessContext] JSON parse failed, retrying once:', jsonStr.slice(0, 200))
+    // Retry once with an explicit JSON reminder
+    const retry = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [
+        { role: 'user', content: `Return ONLY valid JSON, no explanation, no markdown:\n\n${jsonStr}` },
+      ],
+    })
+    const retryText = retry.content[0].type === 'text' ? retry.content[0].text : ''
+    const retryJson = retryText.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+    return JSON.parse(retryJson) as InferenceResult
+  }
 }
 
 // ---- Probe generation ----

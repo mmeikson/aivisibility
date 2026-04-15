@@ -91,6 +91,15 @@ export const runAnalysis = inngest.createFunction(
     await step.run('probe-generation', async () => {
       await emitEvent(reportId, 'inference_done', 'Generating test prompts...')
 
+      // Idempotency: if probes already exist from a previous attempt, skip generation
+      const existing = await getProbesByReport(reportId)
+      const platformCount = process.env.PERPLEXITY_API_KEY ? 4 : 3
+      if (existing.length > 0) {
+        const probeCount = existing.length / 4
+        await emitEvent(reportId, 'probes_start', `Running ${probeCount} prompts across ${platformCount} AI platforms...`)
+        return
+      }
+
       const generated = await generateProbes(inference)
       const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
 
@@ -110,7 +119,6 @@ export const runAnalysis = inngest.createFunction(
 
       await insertProbes(rows)
 
-      const platformCount = process.env.PERPLEXITY_API_KEY ? 4 : 3
       await emitEvent(
         reportId,
         'probes_start',
@@ -317,7 +325,7 @@ export const runAnalysis = inngest.createFunction(
       // BD platforms (openai, google) are retried via the pending-filter mechanism
       // in their own steps — retrying them here would cause duplicate BD sessions.
       // When using direct API providers, retry them here like anthropic/perplexity.
-      await Promise.all([
+      await Promise.allSettled([
         byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
         byPlatform['openai']     && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
