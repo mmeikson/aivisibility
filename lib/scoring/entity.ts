@@ -30,12 +30,15 @@ export async function scoreEntity(
 ): Promise<{ raw_score: number; component_scores_json: Record<string, number> }> {
 
   // Component 1: AI knowledge (20 pts)
-  // Measures what AI models actually know about the brand from entity_check probes.
-  // Neutral default of 10 pts when no entity_check probes exist yet.
+  // Measures what AI models correctly know about the brand from entity_check probes.
+  // Confused probes (entity_confused=true) are excluded — a mention of the wrong entity
+  // is not evidence that the AI knows this brand. Neutral default of 10 if no probes yet.
   const entityProbes = probes.filter((p) => p.prompt_type === 'entity_check' && p.parsed_json)
-  const knownCount = entityProbes.filter((p) => p.parsed_json!.was_mentioned).length
+  const correctlyKnownCount = entityProbes.filter(
+    (p) => p.parsed_json!.was_mentioned && !p.parsed_json!.entity_confused
+  ).length
   const aiKnowledgeScore =
-    entityProbes.length > 0 ? Math.round((knownCount / entityProbes.length) * 20) : 10
+    entityProbes.length > 0 ? Math.round((correctlyKnownCount / entityProbes.length) * 20) : 10
 
   // Component 2: Profile completeness (15 pts) — presence on major B2B/discovery platforms
   const profileChecks = await Promise.allSettled([
@@ -91,15 +94,22 @@ export async function scoreEntity(
   }
 
   // Component 5: Entity disambiguation (30 pts)
-  // Measures how often AI models correctly identify the company vs. confusing it with another entity
+  // Measures how often AI models correctly identify the company vs. confusing it with another entity.
+  // Thresholds are intentionally steep — any meaningful confusion rate is a serious visibility problem.
+  // 0%        → 30  (clean)
+  // (0–5%)    → 24  (minor / edge case)
+  // [5–15%)   → 15  (moderate — noticeable brand ambiguity)
+  // [15–30%)  → 6   (significant — AI regularly describes the wrong company)
+  // ≥30%      → 0   (severe)
   let disambiguationScore = 30
   const parsedProbes = probes.filter((p) => p.parsed_json !== null)
   if (parsedProbes.length > 0) {
     const confusedCount = parsedProbes.filter((p) => p.parsed_json?.entity_confused).length
     const confusionRate = confusedCount / parsedProbes.length
-    if (confusionRate >= 0.5) disambiguationScore = 0
-    else if (confusionRate >= 0.25) disambiguationScore = 12
-    else if (confusionRate > 0) disambiguationScore = 21
+    if (confusionRate >= 0.30) disambiguationScore = 0
+    else if (confusionRate >= 0.15) disambiguationScore = 6
+    else if (confusionRate >= 0.05) disambiguationScore = 15
+    else if (confusionRate > 0) disambiguationScore = 24
     else disambiguationScore = 30
   }
 
