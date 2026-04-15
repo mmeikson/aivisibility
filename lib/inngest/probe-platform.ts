@@ -152,10 +152,13 @@ export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult): Pro
 // ---- Anthropic (claude-sonnet-4-6, no web search) ----
 // Tests parametric knowledge from training data — what Claude "knows" about a brand.
 
+const ANTHROPIC_CONCURRENCY = 5
+const ANTHROPIC_STAGGER_MS  = 500
+
 export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  await Promise.all(probes.map(async (probe) => {
+  await runWithConcurrency(probes, ANTHROPIC_CONCURRENCY, ANTHROPIC_STAGGER_MS, async (probe) => {
     const start = Date.now()
     try {
       const res = await client.messages.create({
@@ -174,7 +177,7 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
       console.error(`Anthropic probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-  }))
+  })
 }
 
 // ---- Perplexity via sonar-pro API ----
