@@ -1,5 +1,5 @@
 import { inngest } from './client'
-import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
+import { updateReport, updateProbe, insertProbes, upsertScore, insertRecommendations, deleteRecommendationsByReport, emitEvent, getReport, getProbesByReport, getProbesByPlatform, getScoresByReport } from '@/lib/db/queries'
 
 // Polls the report status every 2s and aborts the controller when the report
 // is no longer running (i.e. cancelled). Call stop() when the step completes
@@ -395,6 +395,9 @@ export const runAnalysis = inngest.createFunction(
     // Step 8: Generate recommendations for each category
     await step.run('recommendations', async () => {
       await emitEvent(reportId, 'scoring_done', 'Generating recommendations...')
+
+      // Delete any existing recommendations first so retries don't produce duplicates
+      await deleteRecommendationsByReport(reportId)
 
       // Re-fetch scores from DB to get their actual UUIDs
       const dbScores = await getScoresByReport(reportId)

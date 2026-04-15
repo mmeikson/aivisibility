@@ -83,6 +83,12 @@ export async function insertRecommendations(recs: Omit<Recommendation, 'id' | 'c
   if (error) throw error
 }
 
+export async function deleteRecommendationsByReport(reportId: string) {
+  const db = createServiceClient()
+  const { error } = await db.from('recommendations').delete().eq('report_id', reportId)
+  if (error) throw error
+}
+
 export async function getRecommendationsByReport(reportId: string): Promise<Recommendation[]> {
   const db = createServiceClient()
   const { data, error } = await db
