@@ -183,11 +183,14 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult): 
 // ---- Perplexity via sonar-pro API ----
 // Uses the same model as the Perplexity Pro web experience.
 
+const PERPLEXITY_CONCURRENCY = 3
+const PERPLEXITY_STAGGER_MS  = 200
+
 export async function probePerplexity(probes: Probe[], onResult: OnProbeResult): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.PERPLEXITY_API_KEY, baseURL: 'https://api.perplexity.ai' })
   const date = new Date().toISOString().slice(0, 10)
 
-  for (const probe of probes) {
+  await runWithConcurrency(probes, PERPLEXITY_CONCURRENCY, PERPLEXITY_STAGGER_MS, async (probe) => {
     const start = Date.now()
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -215,8 +218,7 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult):
       console.error(`Perplexity probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
     }
-    await sleep(300 + Math.random() * 300)
-  }
+  })
 }
 
 // ---- OpenAI direct API (gpt-4o-search-preview) ----
