@@ -274,8 +274,10 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
         ?.groundingChunks?.map((c: any) => c.web?.uri ?? '').filter(Boolean) ?? []
       const citations = await Promise.all(
         rawUrls.map(async (url) => {
-          try { const r = await fetch(url, { method: 'HEAD', redirect: 'follow' }); return r.url }
-          catch { return url }
+          try {
+            const r = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(5000) })
+            return r.url
+          } catch { return url }
         })
       )
       console.log(`[Gemini-API] probe complete (${probe.id}) latency=${Date.now() - start}ms text_len=${text.length}`)
