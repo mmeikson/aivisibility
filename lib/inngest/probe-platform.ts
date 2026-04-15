@@ -294,15 +294,20 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
     if (signal?.aborted) return
     const start = Date.now()
     try {
-      // @google/generative-ai doesn't accept AbortSignal — wrap with abortableRequest
-      const result = await abortableRequest(
-        model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: probe.prompt_text }] }],
-          systemInstruction: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
-          generationConfig: { temperature: 0 },
-        }),
-        signal
-      )
+      // @google/generative-ai doesn't accept AbortSignal — wrap with abortableRequest.
+      // Also race against a hard 90s timeout so a hung/rate-limited request fails
+      // cleanly instead of blocking the Promise.all forever.
+      const result = await Promise.race([
+        abortableRequest(
+          model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: probe.prompt_text }] }],
+            systemInstruction: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
+            generationConfig: { temperature: 0 },
+          }),
+          signal
+        ),
+        timeout(90_000, `Gemini probe ${probe.id}`),
+      ])
       const text = result.response.text()
       if (!text.trim()) throw new Error('Empty response')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
