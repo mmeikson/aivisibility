@@ -214,16 +214,10 @@ export default async function ReportPage({ params }: Props) {
     const mentioned = rankingProbes.filter(p =>
       p.parsed_json!.competitor_mentions.some(c => c.toLowerCase().includes(name.toLowerCase()))
     )
-    const strength = rankingTotal > 0
-      ? rankingProbes.reduce((sum, p) => {
-          const found = p.parsed_json!.competitor_mentions.some(
-            c => c.toLowerCase().includes(name.toLowerCase())
-          )
-          if (!found) return sum
-          const s = p.parsed_json!.recommendation_strength
-          return sum + (s === 'confident' ? 1 : s === 'hedged' ? 0.5 : 0)
-        }, 0) / rankingTotal
-      : 0
+    // Competitors have no per-entity recommendation_strength data — appearing in a
+    // brand-agnostic discovery/ranking probe is itself a confident recommendation signal,
+    // so mention rate is the correct strength proxy.
+    const strength = rankingTotal > 0 ? mentioned.length / rankingTotal : 0
     return {
       name,
       domain: guessCompetitorDomain(name),
