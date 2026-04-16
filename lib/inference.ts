@@ -8,7 +8,7 @@ function getClient() {
 
 export interface GeneratedProbe {
   prompt_text: string
-  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check'
+  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check' | 'ranking'
 }
 
 // ---- Business understanding ----
@@ -144,7 +144,23 @@ Rules:
     prompt_type: 'pairwise' as const,
   }))
 
-  const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes]
+  // Ranking probes: unbiased category-level queries to measure competitive standing
+  const rankingProbes: GeneratedProbe[] = [
+    {
+      prompt_text: `What ${inference.category} tools would you recommend for ${inference.target_customer}? Give me your top picks.`,
+      prompt_type: 'discovery',
+    },
+    {
+      prompt_text: `I need to ${inference.primary_use_case}. What tools or services would you suggest?`,
+      prompt_type: 'job_to_be_done',
+    },
+    {
+      prompt_text: `What are the top 5 ${inference.category} tools right now? Rank them from best to worst.`,
+      prompt_type: 'ranking',
+    },
+  ]
+
+  const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes]
 
   // Deduplicate by normalized prompt text
   const seen = new Set<string>()

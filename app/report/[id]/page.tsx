@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
+import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
 import type { Score, Recommendation, ScoreCategory } from '@/lib/db/types'
@@ -203,6 +204,57 @@ export default async function ReportPage({ params }: Props) {
     confusedProbes.map(p => p.parsed_json?.confused_with).filter(Boolean) as string[]
   )]
 
+  // Competitor ranking: derive from brand-agnostic probes (discovery, job_to_be_done, ranking)
+  const rankingProbes = probes.filter(
+    p => ['discovery', 'job_to_be_done', 'ranking'].includes(p.prompt_type) && p.parsed_json !== null
+  )
+  const rankingTotal = rankingProbes.length
+
+  const competitorPoints: CompetitorPoint[] = report.competitors.map((name) => {
+    const mentioned = rankingProbes.filter(p =>
+      p.parsed_json!.competitor_mentions.some(c => c.toLowerCase().includes(name.toLowerCase()))
+    )
+    const strength = rankingTotal > 0
+      ? rankingProbes.reduce((sum, p) => {
+          const found = p.parsed_json!.competitor_mentions.some(
+            c => c.toLowerCase().includes(name.toLowerCase())
+          )
+          if (!found) return sum
+          const s = p.parsed_json!.recommendation_strength
+          return sum + (s === 'confident' ? 1 : s === 'hedged' ? 0.5 : 0)
+        }, 0) / rankingTotal
+      : 0
+    return {
+      name,
+      domain: guessCompetitorDomain(name),
+      mentions: mentioned.length,
+      mentionRate: rankingTotal > 0 ? mentioned.length / rankingTotal : 0,
+      strength,
+      isTarget: false,
+    }
+  })
+
+  const brandRankingMentions = rankingProbes.filter(p => p.parsed_json!.was_mentioned)
+  const brandStrength = rankingTotal > 0
+    ? rankingProbes.reduce((sum, p) => {
+        if (!p.parsed_json!.was_mentioned) return sum
+        const s = p.parsed_json!.recommendation_strength
+        return sum + (s === 'confident' ? 1 : s === 'hedged' ? 0.5 : 0)
+      }, 0) / rankingTotal
+    : 0
+
+  const quadrantPoints: CompetitorPoint[] = [
+    {
+      name: report.company_name ?? new URL(report.url).hostname,
+      domain: new URL(report.url).hostname,
+      mentions: brandRankingMentions.length,
+      mentionRate: rankingTotal > 0 ? brandRankingMentions.length / rankingTotal : 0,
+      strength: brandStrength,
+      isTarget: true,
+    },
+    ...competitorPoints,
+  ]
+
   // All 4 scores in display order
   const SCORE_ORDER: ScoreCategory[] = ['category_association', 'retrieval', 'social_proof', 'entity']
   const orderedScores = SCORE_ORDER.flatMap(cat => scores.filter(s => s.category === cat))
@@ -242,44 +294,18 @@ export default async function ReportPage({ params }: Props) {
         </div>
       )}
 
-      {/* Saved confirmation */}
-      {isOwner && (
-        <div className="border-b border-[#E5E2DC] bg-[#f0fdf4] px-6 py-3">
-          <div className="max-w-[1024px] mx-auto flex items-center justify-between gap-4">
-            <p className="text-xs text-[#16a34a]">
-              Saved to your account.
-            </p>
-            <div className="flex items-center gap-3">
-              <ShareButton reportId={id} />
-              <Link href="/dashboard" className="text-xs font-mono text-[#16a34a] hover:text-[#141414] transition-colors">
-                View dashboard →
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Disambiguation warning */}
-      {confusedProbes.length > 0 && (
-        <div className="border-b border-[#fde68a] bg-[#fffbeb] px-6 py-3">
-          <div className="max-w-[1024px] mx-auto flex items-start gap-3">
-            <span className="text-[#92400e] mt-0.5">⚠</span>
-            <p className="text-xs text-[#92400e] leading-relaxed">
-              <span className="font-medium">Disambiguation detected</span> — {confusedProbes.length} of {probeCount} AI responses appear to describe a different company
-              {confusedWith.length > 0 && <> ({confusedWith.join(', ')})</>} rather than {report.company_name ?? new URL(report.url).hostname}.
-              This is suppressing your scores. See the <span className="font-medium">Entity Recognition</span> category for details.
-            </p>
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 px-6 py-12 max-w-[1024px] mx-auto w-full">
 
         {/* Report header */}
         <div className="space-y-4 mb-12 fade-up">
           <div className="space-y-1.5">
-            <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
-              AI Visibility Report
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
+                AI Visibility Report
+              </div>
+              <ShareButton reportId={id} />
             </div>
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -375,9 +401,27 @@ export default async function ReportPage({ params }: Props) {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {orderedScores.map((score) => (
-                <FoundationCard key={score.id} score={score} reportId={id} />
+                <FoundationCard
+                  key={score.id}
+                  score={score}
+                  reportId={id}
+                  disambig={score.category === 'entity' && confusedProbes.length > 0
+                    ? { count: confusedProbes.length, total: probeCount, names: confusedWith }
+                    : undefined}
+                />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Competitive ranking */}
+        {quadrantPoints.length > 1 && rankingTotal > 0 && (
+          <div className="space-y-4 fade-up fade-up-3 mb-12">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
+            <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
           </div>
         )}
 
@@ -409,7 +453,11 @@ export default async function ReportPage({ params }: Props) {
   )
 }
 
-function FoundationCard({ score, reportId }: { score: Score; reportId: string }) {
+function FoundationCard({ score, reportId, disambig }: {
+  score: Score
+  reportId: string
+  disambig?: { count: number; total: number; names: string[] }
+}) {
   const cat = score.category as ScoreCategory
   const label = CATEGORY_LABELS[cat] ?? cat
   const description = CATEGORY_DESCRIPTIONS[cat]
@@ -443,6 +491,12 @@ function FoundationCard({ score, reportId }: { score: Score; reportId: string })
       </div>
       {description && (
         <p className="text-xs text-[#ABABAB] leading-relaxed mb-3">{description}</p>
+      )}
+      {disambig && (
+        <p className="text-xs text-[#92400e] bg-[#fffbeb] border border-[#fde68a] rounded px-2 py-1.5 mb-3 leading-relaxed">
+          ⚠ {disambig.count} of {disambig.total} responses described a different entity
+          {disambig.names.length > 0 && <> ({disambig.names.join(', ')})</>}
+        </p>
       )}
       <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
         See recommendations <span>→</span>

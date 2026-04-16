@@ -1,6 +1,6 @@
 export type ReportStatus = 'pending' | 'running' | 'complete' | 'failed'
 export type Platform = 'openai' | 'anthropic' | 'perplexity' | 'google'
-export type PromptType = 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check'
+export type PromptType = 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check' | 'ranking'
 export type ScoreCategory = 'entity' | 'category_association' | 'retrieval' | 'social_proof'
 export type ProbeStatus = 'pending' | 'complete' | 'failed'
 
