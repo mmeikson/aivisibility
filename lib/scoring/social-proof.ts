@@ -89,7 +89,7 @@ export async function scoreSocialProof(
 
   // Phase 2 — check brand presence on each discovered site (parallel, up to 5 calls)
   const presenceResults = await Promise.allSettled(
-    topDomains.map((domain) => serpSearch(`"${brand}" site:${domain}`, 5))
+    topDomains.map((domain) => serpSearch(`"${brand}" ${category} site:${domain}`, 5))
   )
 
   const component_scores_json: Record<string, number> = {}
