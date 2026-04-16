@@ -74,8 +74,10 @@ export async function scoreSocialProof(
   const brandDomain = brand.toLowerCase().replace(/[^a-z0-9]/g, '')
 
   // Phase 1 — discover relevant review sites (2 parallel calls)
+  // Category is included in the brand review search to avoid collisions where the
+  // brand name matches an unrelated entity (e.g. a drug, a place, another company).
   const [brandReviewsResult, bestCategoryResult] = await Promise.allSettled([
-    serpSearch(`"${brand}" reviews`, 10),
+    serpSearch(`"${brand}" ${category} reviews`, 10),
     serpSearch(`best ${category}`, 20),
   ])
 
