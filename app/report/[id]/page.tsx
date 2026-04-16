@@ -380,9 +380,20 @@ export default async function ReportPage({ params }: Props) {
           )}
         </div>
 
+        {/* Competitive ranking */}
+        {quadrantPoints.length > 1 && rankingTotal > 0 && (
+          <div className="space-y-4 fade-up fade-up-1 mb-12">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
+            <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
+          </div>
+        )}
+
         {/* Engine-first probe view */}
         {probes.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-1 mb-12">
+          <div className="space-y-4 fade-up fade-up-2 mb-12">
             <div className="flex items-center gap-3">
               <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Prompt Analysis</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
@@ -397,7 +408,7 @@ export default async function ReportPage({ params }: Props) {
 
         {/* Score cards — all 4 categories */}
         {orderedScores.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-2 mb-12">
+          <div className="space-y-4 fade-up fade-up-3 mb-12">
             <div className="flex items-center gap-3">
               <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Scores</span>
               <span className="flex-1 h-px bg-[#E5E2DC]" />
@@ -411,17 +422,6 @@ export default async function ReportPage({ params }: Props) {
                 />
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Competitive ranking */}
-        {quadrantPoints.length > 1 && rankingTotal > 0 && (
-          <div className="space-y-4 fade-up fade-up-3 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
           </div>
         )}
 
