@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
+import { PerceptionTooltip } from '@/components/perception-tooltip'
 import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
@@ -311,25 +312,21 @@ export default async function ReportPage({ params }: Props) {
                 className="rounded-md"
               />
               <h1
-                className="text-[clamp(2rem,5vw,3.2rem)] leading-[1.05] tracking-tight text-[#141414]"
+                className="text-[clamp(1.6rem,4vw,2.6rem)] leading-[1.05] tracking-tight text-[#141414]"
                 style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
               >
                 {report.company_name ?? new URL(report.url).hostname}
               </h1>
             </div>
             {report.category && (
-              <p className="text-sm text-[#6C6C6C]">{report.category}</p>
+              <p className="text-base text-[#6C6C6C] flex items-center gap-1.5">
+                {report.category}
+                {report.inference_json?.canonical_description && (
+                  <PerceptionTooltip description={report.inference_json.canonical_description} />
+                )}
+              </p>
             )}
           </div>
-
-          {/* AI perception callout */}
-          {report.inference_json?.canonical_description && (
-            <div className="rounded-md border border-[#E5E2DC] bg-[#F7F6F3] px-4 py-3 space-y-1">
-              <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">How AI currently perceives your brand</p>
-              <p className="text-sm text-[#6C6C6C] leading-relaxed">&ldquo;{report.inference_json.canonical_description}&rdquo;</p>
-              <p className="text-[11px] text-[#ABABAB]">This perception is inferred from your website and drives all probes and scoring. If it&rsquo;s off, your website content is likely sending mixed signals to AI models.</p>
-            </div>
-          )}
 
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono">
@@ -340,28 +337,6 @@ export default async function ReportPage({ params }: Props) {
             <span>{report.completed_at ? new Date(report.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
           </div>
 
-          {/* Competitor chips */}
-          {report.competitors.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[#ABABAB] font-mono mr-1">vs</span>
-              {report.competitors.map((c) => (
-                <span
-                  key={c}
-                  className="flex items-center gap-1.5 rounded-full border border-[#E5E2DC] pl-1 pr-3 py-0.5 text-xs text-[#6C6C6C] bg-white"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={faviconUrl(guessCompetitorDomain(c))}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="rounded-sm"
-                  />
-                  {c}
-                </span>
-              ))}
-            </div>
-          )}
 
           {/* Summary + score row */}
           {scores.length > 0 && report.category && (
@@ -388,6 +363,21 @@ export default async function ReportPage({ params }: Props) {
               <span className="flex-1 h-px bg-[#E5E2DC]" />
             </div>
             <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
+          </div>
+        )}
+
+        {/* Quick wins */}
+        {recommendations.length > 0 && (
+          <div className="space-y-4 fade-up fade-up-2 mb-12">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Quick wins</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
+            <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
+              {recommendations.slice(0, 5).map((rec, i) => (
+                <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -425,20 +415,6 @@ export default async function ReportPage({ params }: Props) {
           </div>
         )}
 
-        {/* What to improve */}
-        {recommendations.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">What to improve</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
-              {recommendations.map((rec, i) => (
-                <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
-              ))}
-            </div>
-          </div>
-        )}
 
       </div>
 
@@ -506,6 +482,9 @@ function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: stri
     >
       <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
       <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
+      {rec.effort && (
+        <span className="shrink-0 text-xs text-[#ABABAB] font-mono">{rec.effort}</span>
+      )}
       <span className="shrink-0 text-xs text-[#6C6C6C] font-mono">→</span>
     </Link>
   )
