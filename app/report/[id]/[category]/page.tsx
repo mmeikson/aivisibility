@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
-import { getReport, getScoresByReport, getRecommendationsByReport } from '@/lib/db/queries'
+import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { RecommendationCard } from '@/components/recommendation-card'
 import type { ScoreCategory } from '@/lib/db/types'
 
@@ -118,9 +118,10 @@ export default async function CategoryPage({ params }: Props) {
   if (!report) redirect('/')
   if (report.status !== 'complete') redirect(`/report/${id}/loading`)
 
-  const [scores, allRecs] = await Promise.all([
+  const [scores, allRecs, probes] = await Promise.all([
     getScoresByReport(id),
     getRecommendationsByReport(id),
+    cat === 'entity' ? getProbesByReport(id) : Promise.resolve([]),
   ])
 
   const score = scores.find((s) => s.category === cat)
@@ -135,6 +136,12 @@ export default async function CategoryPage({ params }: Props) {
     })
 
   const components = Object.entries(score.component_scores_json)
+
+  const confusedProbes = probes.filter(p => p.parsed_json?.entity_confused)
+  const confusedWith = [...new Set(
+    confusedProbes.map(p => p.parsed_json?.confused_with).filter(Boolean) as string[]
+  )]
+  const probeCount = probes.filter(p => p.status === 'complete').length
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
@@ -170,6 +177,17 @@ export default async function CategoryPage({ params }: Props) {
             </div>
           </div>
         </div>
+
+        {/* Disambiguation notice — entity only */}
+        {cat === 'entity' && confusedProbes.length > 0 && (
+          <div className="rounded-md border border-[#fde68a] bg-[#fffbeb] px-4 py-3 fade-up fade-up-1">
+            <p className="text-xs text-[#92400e] leading-relaxed">
+              ⚠ {confusedProbes.length} of {probeCount} responses described a different entity
+              {confusedWith.length > 0 && <> ({confusedWith.join(', ')})</>}.
+              {' '}AI models may be conflating your brand with another, which directly penalises your entity score.
+            </p>
+          </div>
+        )}
 
         {/* Score breakdown */}
         <div className="space-y-3 fade-up fade-up-1">

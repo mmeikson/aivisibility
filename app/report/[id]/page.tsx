@@ -414,9 +414,6 @@ export default async function ReportPage({ params }: Props) {
                   key={score.id}
                   score={score}
                   reportId={id}
-                  disambig={score.category === 'entity' && confusedProbes.length > 0
-                    ? { count: confusedProbes.length, total: probeCount, names: confusedWith }
-                    : undefined}
                 />
               ))}
             </div>
@@ -462,10 +459,9 @@ export default async function ReportPage({ params }: Props) {
   )
 }
 
-function FoundationCard({ score, reportId, disambig }: {
+function FoundationCard({ score, reportId }: {
   score: Score
   reportId: string
-  disambig?: { count: number; total: number; names: string[] }
 }) {
   const cat = score.category as ScoreCategory
   const label = CATEGORY_LABELS[cat] ?? cat
@@ -501,13 +497,7 @@ function FoundationCard({ score, reportId, disambig }: {
       {description && (
         <p className="text-xs text-[#ABABAB] leading-relaxed mb-3">{description}</p>
       )}
-      {disambig && (
-        <p className="text-xs text-[#92400e] bg-[#fffbeb] border border-[#fde68a] rounded px-2 py-1.5 mb-3 leading-relaxed">
-          ⚠ {disambig.count} of {disambig.total} responses described a different entity
-          {disambig.names.length > 0 && <> ({disambig.names.join(', ')})</>}
-        </p>
-      )}
-      <span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
+<span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
         See recommendations <span>→</span>
       </span>
     </Link>
