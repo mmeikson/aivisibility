@@ -50,9 +50,11 @@ function detectVertical(category: string): Vertical {
     'nutraceutical', 'natural remedy', 'medical', 'pharma', 'skincare', 'cosmetic', 'beauty']
   if (healthTerms.some((t) => c.includes(t))) return 'health_wellness'
 
-  const consumerTerms = ['apparel', 'clothing', 'fashion', 'baby', 'stroller', 'toy', 'furniture',
-    'home goods', 'consumer product', 'cpg', 'food', 'beverage', 'drink', 'snack', 'grocery',
-    'electronics', 'gadget', 'device', 'outdoor', 'sporting goods', 'pet', 'retail']
+  const consumerTerms = ['apparel', 'clothing', 'fashion', 'footwear', 'shoe', 'sneaker', 'boot',
+    'sandal', 'accessory', 'accessories', 'jewelry', 'watch', 'bag', 'handbag', 'luggage',
+    'baby', 'stroller', 'toy', 'furniture', 'home goods', 'consumer product', 'cpg',
+    'food', 'beverage', 'drink', 'snack', 'grocery', 'electronics', 'gadget', 'device',
+    'outdoor', 'sporting goods', 'pet', 'retail']
   if (consumerTerms.some((t) => c.includes(t))) return 'consumer'
 
   const fintechTerms = ['finance', 'financial', 'banking', 'bank', 'insurance', 'invest',
