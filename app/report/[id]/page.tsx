@@ -95,15 +95,15 @@ function buildSummary(
   let worstGap = -1
   for (const score of scores) {
     for (const [key, pts] of Object.entries(score.component_scores_json)) {
-      const max = COMPONENT_MAX[key]
+      const max = COMPONENT_MAX[key] ?? (key.includes('.') ? 20 : undefined)
       if (!max) continue
       const gap = max - pts
       if (gap > worstGap) { worstGap = gap; worstKey = key }
     }
   }
 
-  const action = worstKey && COMPONENT_ACTIONS[worstKey]
-    ? `consider ${COMPONENT_ACTIONS[worstKey]}`
+  const action = worstKey && (COMPONENT_ACTIONS[worstKey] ?? (worstKey.includes('.') ? `building your profile on ${worstKey}` : undefined))
+    ? `consider ${COMPONENT_ACTIONS[worstKey] ?? `building your profile on ${worstKey}`}`
     : 'focus on expanding your brand footprint across AI-indexed sources'
 
   const s2 = overallScore >= 80
