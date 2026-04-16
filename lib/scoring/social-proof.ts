@@ -96,7 +96,7 @@ export async function scoreSocialProof(
     const domain = topDomains[i]
     const result = presenceResults[i]
     if (result.status === 'fulfilled') {
-      const n = countDomainAppearances(result.value, domain)
+      const n = countBrandMentions(result.value, brand)
       component_scores_json[domain] = n >= 2 ? 20 : n === 1 ? 12 : 0
     } else {
       component_scores_json[domain] = 0
