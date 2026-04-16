@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
-import { PerceptionTooltip } from '@/components/perception-tooltip'
+import { PerceptionAccordion } from '@/components/perception-tooltip'
 import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
@@ -319,12 +319,9 @@ export default async function ReportPage({ params }: Props) {
               </h1>
             </div>
             {report.category && (
-              <p className="text-base text-[#6C6C6C] flex items-center gap-1.5">
-                {report.category}
-                {report.inference_json?.canonical_description && (
-                  <PerceptionTooltip description={report.inference_json.canonical_description} />
-                )}
-              </p>
+              report.inference_json?.canonical_description
+                ? <PerceptionAccordion category={report.category} description={report.inference_json.canonical_description} />
+                : <p className="text-base text-[#6C6C6C]">{report.category}</p>
             )}
           </div>
 

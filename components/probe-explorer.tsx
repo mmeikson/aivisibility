@@ -86,7 +86,7 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
   )
 
   const activePlatforms = platforms.filter((p) => byPlatform[p].length > 0)
-  const [openPlatform, setOpenPlatform] = useState<string>(activePlatforms[0] ?? 'openai')
+  const [openPlatform, setOpenPlatform] = useState<string>('')
 
   return (
     <div className="rounded-lg border border-[#E5E2DC] overflow-hidden">
