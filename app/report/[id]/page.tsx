@@ -328,6 +328,15 @@ export default async function ReportPage({ params }: Props) {
             )}
           </div>
 
+          {/* AI perception callout */}
+          {report.inference_json?.canonical_description && (
+            <div className="rounded-md border border-[#E5E2DC] bg-[#F7F6F3] px-4 py-3 space-y-1">
+              <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">How AI currently perceives your brand</p>
+              <p className="text-sm text-[#6C6C6C] leading-relaxed">&ldquo;{report.inference_json.canonical_description}&rdquo;</p>
+              <p className="text-[11px] text-[#ABABAB]">This perception is inferred from your website and drives all probes and scoring. If it&rsquo;s off, your website content is likely sending mixed signals to AI models.</p>
+            </div>
+          )}
+
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono">
             <span>{probeCount} probes</span>
