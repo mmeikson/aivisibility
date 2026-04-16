@@ -22,6 +22,7 @@ export async function inferBusinessContext(site: CrawledSite): Promise<Inference
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
+    temperature: 0,
     messages: [
       {
         role: 'user',
@@ -83,6 +84,7 @@ export async function generateProbes(inference: InferenceResult): Promise<Genera
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
+    temperature: 0,
     messages: [
       {
         role: 'user',
