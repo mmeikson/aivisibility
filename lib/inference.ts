@@ -171,13 +171,13 @@ ${JSON.stringify(input, null, 2)}`,
 
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
-    ? `3. "job_to_be_done" (6 prompts) — for each customer profile below, generate 2 prompts where that person describes their need in first person, using their context as a preamble. Each must naturally invite a product or service recommendation as the answer.
+    ? `3. "job_to_be_done" (6 prompts) — mix of two styles:
+   a) One prompt per customer profile below (${icpPersonas.length} prompts): write in first person using their context as a preamble, then state their need as a question. Format: "[context sentence]. [question]". Each profile must produce exactly one prompt with a DIFFERENT context preamble.
+   b) ${6 - icpPersonas.length} additional prompts: direct needs using "I need...", "I'm looking for...", or "What's the best X for..." framing — no preamble, different intents from the ICP prompts above.
+   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
 
-Customer profiles:
-${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}
-
-Format: "[context sentence]. [need or question]"
-Do NOT include ${inference.company_name} in these prompts.`
+Customer profiles for (a):
+${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
     : `3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
    CRITICAL: frame these so that recommending a product or service is the natural answer.
    Use "I need...", "I'm looking for...", "What's the best X for..." framing.
@@ -277,13 +277,21 @@ Rules:
     },
   ]
 
-  // Assemble and deduplicate by normalised prompt text
+  // Assemble and deduplicate
+  // Two passes: (1) exact match, (2) shared opening sentence (catches same-preamble ICP variants)
   const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes]
-  const seen = new Set<string>()
+  const seenExact = new Set<string>()
+  const seenOpening = new Set<string>()
   const deduped = allProbes.filter((p) => {
     const key = p.prompt_text.toLowerCase().trim()
-    if (seen.has(key)) return false
-    seen.add(key)
+    if (seenExact.has(key)) return false
+    seenExact.add(key)
+    // Extract opening sentence (up to first period/question mark followed by space or end)
+    const opening = key.match(/^[^.?!]{20,}[.?!]/)?.[0]?.trim()
+    if (opening) {
+      if (seenOpening.has(opening)) return false
+      seenOpening.add(opening)
+    }
     return true
   })
 
