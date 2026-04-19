@@ -46,13 +46,19 @@ const BLOCKLIST = new Set([
   'github.com', 'microsoft.com', 'apple.com',
 ])
 
-function extractTopDomains(results: SerpResult[], brandDomain: string, n: number): string[] {
+function extractTopDomains(results: SerpResult[], brandDomain: string, competitors: string[], n: number): string[] {
+  const competitorKeywords = competitors.map((c) => c.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((k) => k.length > 3)
   const freq: Record<string, number> = {}
   for (const r of results) {
     for (const item of r.organic_results ?? []) {
       try {
         const domain = new URL(item.link ?? '').hostname.replace(/^www\./, '')
-        if (!BLOCKLIST.has(domain) && !domain.includes(brandDomain)) {
+        const domainClean = domain.replace(/[^a-z0-9]/g, '')
+        if (
+          !BLOCKLIST.has(domain) &&
+          !domain.includes(brandDomain) &&
+          !competitorKeywords.some((kw) => domainClean.includes(kw))
+        ) {
           freq[domain] = (freq[domain] ?? 0) + 1
         }
       } catch { /* skip malformed URLs */ }
@@ -87,7 +93,7 @@ export async function scoreSocialProof(
   if (categoryReviewsResult.status === 'fulfilled') discoveryResults.push(categoryReviewsResult.value)
   if (bestCategoryResult.status === 'fulfilled') discoveryResults.push(bestCategoryResult.value)
 
-  const topDomains = extractTopDomains(discoveryResults, brandDomain, 5)
+  const topDomains = extractTopDomains(discoveryResults, brandDomain, inference.competitors ?? [], 5)
 
   // Phase 2 — check brand presence on each discovered site (parallel, up to 5 calls)
   const presenceResults = await Promise.allSettled(

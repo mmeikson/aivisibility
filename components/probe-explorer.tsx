@@ -39,29 +39,53 @@ interface Props {
   platformSummaries?: Record<string, string>
 }
 
-function DonutRing({ mentioned, total }: { mentioned: number; total: number }) {
-  const r = 10
-  const size = 28
-  const cx = size / 2
-  const circ = 2 * Math.PI * r
-  const frac = total > 0 ? mentioned / total : 0
-  const filled = circ * frac
-  const empty = circ - filled
+
+// Maps prompt_text → platform → Probe
+function buildMatrix(probes: Probe[], platforms: readonly string[]): {
+  prompts: string[]
+  matrix: Map<string, Map<string, Probe>>
+} {
+  const promptOrder: string[] = []
+  const seen = new Set<string>()
+  for (const p of probes) {
+    if (!seen.has(p.prompt_text)) {
+      seen.add(p.prompt_text)
+      promptOrder.push(p.prompt_text)
+    }
+  }
+  const matrix = new Map<string, Map<string, Probe>>()
+  for (const text of promptOrder) {
+    const row = new Map<string, Probe>()
+    for (const platform of platforms) {
+      const probe = probes.find((p) => p.prompt_text === text && p.platform === platform)
+      if (probe) row.set(platform, probe)
+    }
+    matrix.set(text, row)
+  }
+  return { prompts: promptOrder, matrix }
+}
+
+function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () => void }) {
+  if (!probe) return <td className="px-3 py-2.5 text-center" />
+
+  const mentioned = probe.parsed_json?.was_mentioned
+  const strength = probe.parsed_json?.recommendation_strength
+
+  let dotClass = 'bg-[#E5E2DC]' // not mentioned
+  if (mentioned) {
+    dotClass = strength === 'confident' ? 'bg-[#16a34a]' : 'bg-[#CEAC01]'
+  }
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
-      <circle cx={cx} cy={cx} r={r} fill="none" stroke="#E5E2DC" strokeWidth={3} />
-      {frac > 0 && (
-        <circle
-          cx={cx} cy={cx} r={r}
-          fill="none"
-          stroke="#16a34a"
-          strokeWidth={3}
-          strokeDasharray={`${filled} ${empty}`}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${cx} ${cx})`}
-        />
-      )}
-    </svg>
+    <td className="px-3 py-2.5 text-center">
+      <button
+        onClick={onClick}
+        title={mentioned ? `${strength} recommendation` : 'Not mentioned'}
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:opacity-70 transition-opacity"
+      >
+        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+      </button>
+    </td>
   )
 }
 
@@ -69,120 +93,89 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
   const [selected, setSelected] = useState<Probe | null>(null)
 
   const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
+  const activePlatforms = platforms.filter((p) => probes.some((r) => r.platform === p))
 
-  // Canonical prompt order derived from all probes (de-duped, stable)
-  const promptOrder = Array.from(
-    new Map(probes.map((p) => [p.prompt_text, p])).keys()
+  const { prompts, matrix } = buildMatrix(probes, activePlatforms)
+
+  // Summary stats per platform
+  const stats = Object.fromEntries(
+    activePlatforms.map((p) => {
+      const platformProbes = probes.filter((r) => r.platform === p)
+      const mentioned = platformProbes.filter((r) => r.parsed_json?.was_mentioned).length
+      return [p, { mentioned, total: platformProbes.length }]
+    })
   )
-
-  const byPlatform = Object.fromEntries(
-    platforms.map((p) => [
-      p,
-      probes
-        .filter((probe) => probe.platform === p)
-        .filter((probe, i, arr) => arr.findIndex((x) => x.prompt_text === probe.prompt_text) === i)
-        .sort((a, b) => promptOrder.indexOf(a.prompt_text) - promptOrder.indexOf(b.prompt_text)),
-    ])
-  )
-
-  const activePlatforms = platforms.filter((p) => byPlatform[p].length > 0)
-  const [openPlatform, setOpenPlatform] = useState<string>('')
 
   return (
-    <div className="rounded-lg border border-[#E5E2DC] overflow-hidden">
-      {activePlatforms.map((platform, idx) => {
-        const platformProbes = byPlatform[platform] ?? []
-        const isOpen = openPlatform === platform
-        const isLast = idx === activePlatforms.length - 1
-
-        const mentionedCount = platformProbes.filter((p) => p.parsed_json?.was_mentioned).length
-
-        return (
-          <div key={platform} className={!isLast ? 'border-b border-[#E5E2DC]' : ''}>
-            {/* Accordion header */}
-            <div
-              className={`px-5 py-4 bg-white transition-colors ${!isOpen ? 'hover:bg-[#FAFAF8] cursor-pointer' : ''}`}
-              onClick={() => { if (!isOpen) setOpenPlatform(platform) }}
-            >
-              {/* Top row: engine identity + donut */}
-              <div className="flex items-start justify-between gap-4 mb-2">
-                <div className="flex items-center gap-2">
-                  {PLATFORM_ICONS[platform] && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={PLATFORM_ICONS[platform]} alt="" width={18} height={18} className="shrink-0" />
-                  )}
-                  <span className="text-sm font-semibold text-[#141414]">{PLATFORM_LABELS[platform] ?? platform}</span>
-                  <span className="text-sm text-[#ABABAB]">·</span>
-                  <span className="text-sm text-[#ABABAB]">{ENGINE_USERS[platform]}</span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <DonutRing mentioned={mentionedCount} total={platformProbes.length} />
-                  <span className="text-xs font-mono text-[#6C6C6C]">{mentionedCount}/{platformProbes.length} mentions</span>
-                </div>
-              </div>
-
-              {/* Summary */}
-              {platformSummaries[platform] && (
-                <p className="text-sm text-[#141414] leading-relaxed mb-3">{platformSummaries[platform]}</p>
-              )}
-
-              {/* Expand / collapse link */}
-              <button
-                className="text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors tracking-wide"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setOpenPlatform(isOpen ? '' : platform)
-                }}
-              >
-                {isOpen ? 'COLLAPSE ↑' : `VIEW ALL ${platformProbes.length} PROMPTS →`}
-              </button>
-            </div>
-
-            {/* Probe list */}
-            {isOpen && (
-              <div className="bg-white border-t border-[#E5E2DC]">
-                {platformProbes.map((probe, i) => {
-                  const mentioned = probe.parsed_json?.was_mentioned
-                  const strength = probe.parsed_json?.recommendation_strength
-                  const isLastProbe = i === platformProbes.length - 1
-
-                  return (
-                    <button
-                      key={probe.id}
-                      onClick={() => setSelected(probe)}
-                      className={`w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-[#F3F2EF] transition-colors group ${
-                        !isLastProbe ? 'border-b border-[#E5E2DC]' : ''
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          probe.status !== 'complete'
-                            ? 'bg-[#CDCBC6]'
-                            : mentioned
-                            ? 'bg-[#16a34a]'
-                            : 'bg-[#E5E2DC]'
-                        }`}
-                      />
-                      <span className="flex-1 text-xs text-[#141414] truncate">{probe.prompt_text}</span>
-                      <span className="shrink-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wide hidden sm:block">
-                        {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
-                      </span>
-                      {strength && strength !== 'none' && (
-                        <span className={`shrink-0 text-[10px] font-mono uppercase tracking-wide ${
-                          strength === 'confident' ? 'severity-healthy' : 'severity-moderate'
-                        }`}>
-                          {strength}
+    <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-[#E5E2DC] bg-[#FAFAF8]">
+              <th className="px-5 py-3 text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest font-normal w-full">
+                Prompt
+              </th>
+              {activePlatforms.map((p) => (
+                <th key={p} className="px-3 py-3 text-center whitespace-nowrap">
+                  <div className="flex flex-col items-center gap-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={PLATFORM_ICONS[p]} alt={PLATFORM_LABELS[p]} width={16} height={16} className="shrink-0" />
+                    <span className="text-[10px] font-mono text-[#ABABAB] tracking-wide">
+                      {stats[p]?.mentioned ?? 0}/{stats[p]?.total ?? 0}
+                    </span>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {prompts.map((text, i) => {
+              const row = matrix.get(text)
+              const isLast = i === prompts.length - 1
+              // Probe type from any platform
+              const anyProbe = row ? [...row.values()][0] : undefined
+              return (
+                <tr
+                  key={text}
+                  className={`hover:bg-[#F3F2EF] transition-colors ${!isLast ? 'border-b border-[#E5E2DC]' : ''}`}
+                >
+                  <td className="px-5 py-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xs text-[#141414] leading-snug">{text}</span>
+                      {anyProbe && (
+                        <span className="shrink-0 text-[10px] font-mono text-[#CDCBC6] uppercase tracking-wide hidden sm:inline">
+                          {PROMPT_TYPE_LABELS[anyProbe.prompt_type] ?? anyProbe.prompt_type}
                         </span>
                       )}
-                      <span className="shrink-0 text-[#CDCBC6] group-hover:text-[#6C6C6C] transition-colors text-xs">→</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )
-      })}
+                    </div>
+                  </td>
+                  {activePlatforms.map((p) => (
+                    <MentionDot
+                      key={p}
+                      probe={row?.get(p)}
+                      onClick={() => { const pr = row?.get(p); if (pr) setSelected(pr) }}
+                    />
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 px-5 py-3 border-t border-[#E5E2DC] bg-[#FAFAF8]">
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+          <span className="w-2 h-2 rounded-full bg-[#16a34a]" /> Confident
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+          <span className="w-2 h-2 rounded-full bg-[#CEAC01]" /> Hedged
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+          <span className="w-2 h-2 rounded-full bg-[#E5E2DC]" /> Not mentioned
+        </span>
+        <span className="text-[10px] font-mono text-[#CDCBC6] ml-auto">click any dot to view response</span>
+      </div>
 
       {selected && createPortal(
         <ProbeModal probe={selected} companyName={companyName} onClose={() => setSelected(null)} />,

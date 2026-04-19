@@ -1,5 +1,9 @@
 'use client'
 
+import { useState } from 'react'
+
+const VISIBLE_COUNT = 8
+
 export interface CompetitorPoint {
   name: string
   domain: string
@@ -15,13 +19,17 @@ interface Props {
 }
 
 export function CompetitorQuadrant({ points, totalProbes }: Props) {
+  const [showAll, setShowAll] = useState(false)
+
   if (points.length === 0) return null
 
   const sorted = [...points].sort((a, b) => b.mentionRate - a.mentionRate)
+  const visible = showAll ? sorted : sorted.slice(0, VISIBLE_COUNT)
+  const hiddenCount = sorted.length - VISIBLE_COUNT
 
   return (
     <div className="rounded-lg border border-[#E5E2DC] bg-white px-6 py-4 space-y-2.5">
-      {sorted.map((pt) => (
+      {visible.map((pt) => (
         <div key={pt.name} className="flex items-center gap-3">
           {/* Brand chip */}
           <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap shrink-0 w-44
@@ -56,9 +64,19 @@ export function CompetitorQuadrant({ points, totalProbes }: Props) {
         </div>
       ))}
 
-      <p className="text-[10px] text-[#ABABAB] font-mono pt-1">
-        Mention rate across {totalProbes} brand-agnostic probes · 4 platforms
-      </p>
+      <div className="flex items-center justify-between pt-1">
+        <p className="text-[10px] text-[#ABABAB] font-mono">
+          Mention rate across {totalProbes} brand-agnostic probes · 4 platforms
+        </p>
+        {hiddenCount > 0 && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            className="text-[10px] font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors tracking-wide"
+          >
+            {showAll ? 'SHOW LESS ↑' : `+${hiddenCount} MORE ↓`}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
