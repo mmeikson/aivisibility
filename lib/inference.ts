@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { CrawledSite } from './crawler'
-import type { InferenceResult } from './db/types'
+import type { InferenceResult, IcpPersona } from './db/types'
 
 function getClient() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -78,6 +78,37 @@ ${pageContent}`,
   }
 }
 
+// ---- ICP generation ----
+
+export async function generateIcpPersonas(inference: InferenceResult): Promise<IcpPersona[]> {
+  const res = await getClient().messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    temperature: 0,
+    messages: [{
+      role: 'user',
+      content: `Generate 3 distinct ideal customer profiles for the following brand.
+
+Brand: ${inference.company_name}
+Category: ${inference.category}
+Use case: ${inference.primary_use_case}
+Target customer: ${inference.target_customer}
+
+Each profile should represent a meaningfully different type of customer — different scale, role, or situation.
+Return a JSON array with objects containing:
+- "label": short name for this customer type (e.g. "Self-managing landlord")
+- "context": one first-person sentence establishing their situation (e.g. "I self-manage 4 units across two properties")
+- "primary_need": what they are primarily looking for (e.g. "collect rent online without a property manager")
+
+Return ONLY valid JSON, no explanation.`,
+    }],
+  })
+
+  const text = res.content[0]?.type === 'text' ? res.content[0].text : '[]'
+  const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+  return JSON.parse(jsonStr) as IcpPersona[]
+}
+
 // ---- Probe generation ----
 
 async function qualityFilterProbes(
@@ -138,7 +169,21 @@ ${JSON.stringify(input, null, 2)}`,
   }
 }
 
-export async function generateProbes(inference: InferenceResult): Promise<GeneratedProbe[]> {
+export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
+  const jtbdSection = icpPersonas && icpPersonas.length > 0
+    ? `3. "job_to_be_done" (6 prompts) — for each customer profile below, generate 2 prompts where that person describes their need in first person, using their context as a preamble. Each must naturally invite a product or service recommendation as the answer.
+
+Customer profiles:
+${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}
+
+Format: "[context sentence]. [need or question]"
+Do NOT include ${inference.company_name} in these prompts.`
+    : `3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
+   CRITICAL: frame these so that recommending a product or service is the natural answer.
+   Use "I need...", "I'm looking for...", "What's the best X for..." framing.
+   Avoid "How do I..." framing — that invites process advice, not product recommendations.
+   Do NOT include ${inference.company_name} in these prompts.`
+
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
@@ -170,11 +215,7 @@ Types and counts:
 2. "comparison" (4 prompts) — natural user comparisons involving ${inference.company_name} and a competitor.
    Use a different competitor each time. Make them sound like real user questions, not templates.
 
-3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
-   CRITICAL: frame these so that recommending a product or service is the natural answer.
-   Use "I need...", "I'm looking for...", "What's the best X for..." framing.
-   Avoid "How do I..." framing — that invites process advice, not product recommendations.
-   Do NOT include ${inference.company_name} in these prompts.
+${jtbdSection}
 
 Rules:
 - Every prompt must sound like something a real user would type into ChatGPT or Google

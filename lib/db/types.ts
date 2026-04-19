@@ -28,6 +28,12 @@ export interface Report {
   completed_at: string | null
 }
 
+export interface IcpPersona {
+  label: string        // e.g. "Self-managing landlord"
+  context: string      // first-person context sentence, e.g. "I self-manage 4 units across two properties"
+  primary_need: string // e.g. "collect rent online without a property manager"
+}
+
 export interface InferenceResult {
   company_name: string
   canonical_description: string
@@ -37,6 +43,7 @@ export interface InferenceResult {
   competitors: string[]
   confidence: Record<string, 'low' | 'medium' | 'high'>
   platform_summaries?: Record<string, string>
+  icp_personas?: IcpPersona[]
 }
 
 export interface ParsedProbeResult {

@@ -20,7 +20,7 @@ function startCancellationWatch(reportId: string): { signal: AbortSignal; stop: 
   return { signal: ac.signal, stop: () => { stopped = true; ac.abort() } }
 }
 import { crawlSite } from '@/lib/crawler'
-import { inferBusinessContext, generateProbes } from '@/lib/inference'
+import { inferBusinessContext, generateProbes, generateIcpPersonas } from '@/lib/inference'
 import { probeOpenAI, probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
@@ -88,6 +88,16 @@ export const runAnalysis = inngest.createFunction(
       return result
     })
 
+    // Step 3.5: Generate ICP personas (optional — enabled by ENABLE_ICP_PROBES=true)
+    if (process.env.ENABLE_ICP_PROBES === 'true') {
+      inference = await step.run('generate-icps', async () => {
+        const personas = await generateIcpPersonas(inference)
+        const updated = { ...inference, icp_personas: personas }
+        await updateReport(reportId, { inference_json: updated })
+        return updated
+      })
+    }
+
     // Step 4: Probe generation
     await step.run('probe-generation', async () => {
       await emitEvent(reportId, 'inference_done', 'Generating test prompts...')
@@ -101,7 +111,7 @@ export const runAnalysis = inngest.createFunction(
         return
       }
 
-      const generated = await generateProbes(inference)
+      const generated = await generateProbes(inference, inference.icp_personas)
       const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
 
       const rows = generated.flatMap((p) =>
