@@ -80,6 +80,63 @@ ${pageContent}`,
 
 // ---- Probe generation ----
 
+async function qualityFilterProbes(
+  probes: GeneratedProbe[],
+  inference: InferenceResult,
+  maxCount: number
+): Promise<GeneratedProbe[]> {
+  // Fixed probe types must be preserved — they feed directly into scoring
+  const FIXED_TYPES = new Set(['entity_check', 'pairwise', 'ranking'])
+  const fixed = probes.filter((p) => FIXED_TYPES.has(p.prompt_type))
+  const variable = probes.filter((p) => !FIXED_TYPES.has(p.prompt_type))
+  const variableBudget = maxCount - fixed.length
+
+  if (variable.length <= variableBudget) return probes
+
+  const input = variable.map((p, i) => ({ index: i, prompt_text: p.prompt_text, prompt_type: p.prompt_type }))
+
+  try {
+    const res = await getClient().messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      temperature: 0,
+      messages: [{
+        role: 'user',
+        content: `You are quality-checking AI visibility test probes for ${inference.company_name}, a ${inference.category} company.
+
+Select the best ${variableBudget} probes from the list below. Criteria:
+- Sounds like a real user query (natural language, not marketing copy)
+- No near-duplicate intents — each probe should surface different signal
+- Discovery probes must vary in shape: feature-focused, outcome-focused, persona-focused, etc.
+- Prefer specific, concrete phrasings over generic ones
+
+Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
+
+Probes:
+${JSON.stringify(input, null, 2)}`,
+      }],
+    })
+
+    const text = res.content[0]?.type === 'text' ? res.content[0].text : ''
+    const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+    const indices = JSON.parse(jsonStr) as number[]
+    const kept = indices
+      .filter((i) => i >= 0 && i < variable.length)
+      .slice(0, variableBudget)
+      .map((i) => variable[i])
+
+    if (kept.length < variableBudget * 0.5) {
+      console.warn('[qualityFilterProbes] filter returned too few — falling back')
+      return [...fixed, ...variable.slice(0, variableBudget)]
+    }
+
+    return [...fixed, ...kept]
+  } catch (err) {
+    console.warn('[qualityFilterProbes] failed, falling back:', err instanceof Error ? err.message : err)
+    return [...fixed, ...variable.slice(0, variableBudget)]
+  }
+}
+
 export async function generateProbes(inference: InferenceResult): Promise<GeneratedProbe[]> {
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
@@ -97,25 +154,28 @@ Company details:
 - Target customer: ${inference.target_customer}
 - Known competitors: ${inference.competitors.join(', ')}
 
-Generate 12 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
+Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
-Types and examples:
-1. "discovery" — prompts someone would use to find tools in this category
-   e.g. "Best ${inference.category} tools", "Top ${inference.category} for ${inference.target_customer}"
-   Generate 5 discovery prompts.
+Types and counts:
+1. "discovery" (8 prompts) — prompts someone would use to find tools in this category.
+   Each must have a DIFFERENT query shape — do not just paraphrase the same question:
+   - feature-focused: "Best tools for [specific feature]"
+   - outcome-focused: "How do I [achieve outcome] faster"
+   - persona-focused: "Best [category] for [specific role/team type]"
+   - budget/scale-focused: "Affordable [category] for startups"
+   - comparison-seeking: "What are the top [category] alternatives to [known tool]"
+   Do NOT include ${inference.company_name} in these prompts.
 
-2. "comparison" — prompts comparing this brand to competitors
-   e.g. "${inference.company_name} vs [Competitor]", "Is ${inference.company_name} better than [Competitor]?"
-   Generate 3 comparison prompts (use different competitors each time).
+2. "comparison" (4 prompts) — natural user comparisons involving ${inference.company_name} and a competitor.
+   Use a different competitor each time. Make them sound like real user questions, not templates.
 
-3. "job_to_be_done" — prompts framed around the task, not the category
-   e.g. "How do I ${inference.primary_use_case}?", "Software to help me ${inference.primary_use_case}"
-   Generate 4 job-to-be-done prompts.
+3. "job_to_be_done" (6 prompts) — framed around the specific task or problem, not the category name.
+   These should describe the problem the user is trying to solve in plain language.
+   Do NOT include ${inference.company_name} in these prompts.
 
 Rules:
-- Make prompts sound like real user queries, not formal questions
-- Vary phrasing — avoid repetition
-- Do not include the company name in discovery or job-to-be-done prompts
+- Every prompt must sound like something a real user would type into ChatGPT or Google
+- No repetition of intent across prompts — each should surface different signal
 - Return ONLY a valid JSON array, no explanation
 
 [{"prompt_text": "...", "prompt_type": "discovery"}, ...]`,
@@ -141,19 +201,30 @@ Rules:
   ]
 
   // Pairwise probes: direct competitive displacement (up to 3 competitors)
-  const pairwiseProbes: GeneratedProbe[] = inference.competitors.slice(0, 3).map((competitor) => ({
-    prompt_text: `Which is better for ${inference.primary_use_case}: ${inference.company_name} or ${competitor}? Recommend one.`,
-    prompt_type: 'pairwise' as const,
-  }))
+  // Skip any competitor already covered by a comparison probe to avoid duplication.
+  const comparisonCompetitors = new Set(
+    inference.competitors.filter((c) =>
+      llmProbes.some(
+        (p) => p.prompt_type === 'comparison' && p.prompt_text.toLowerCase().includes(c.toLowerCase())
+      )
+    )
+  )
+  const pairwiseProbes: GeneratedProbe[] = inference.competitors
+    .filter((c) => !comparisonCompetitors.has(c))
+    .slice(0, 3)
+    .map((competitor) => ({
+      prompt_text: `Which is better for ${inference.category}: ${inference.company_name} or ${competitor}? Recommend one.`,
+      prompt_type: 'pairwise' as const,
+    }))
 
-  // Ranking probes: unbiased category-level queries to measure competitive standing
+  // Fixed ranking probes
   const rankingProbes: GeneratedProbe[] = [
     {
       prompt_text: `What ${inference.category} tools would you recommend for ${inference.target_customer}? Give me your top picks.`,
       prompt_type: 'discovery',
     },
     {
-      prompt_text: `I need to ${inference.primary_use_case}. What tools or services would you suggest?`,
+      prompt_text: `I'm looking for ${inference.category} software. What would you suggest?`,
       prompt_type: 'job_to_be_done',
     },
     {
@@ -162,14 +233,15 @@ Rules:
     },
   ]
 
+  // Assemble and deduplicate by normalised prompt text
   const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes]
-
-  // Deduplicate by normalized prompt text
   const seen = new Set<string>()
-  return allProbes.filter((p) => {
+  const deduped = allProbes.filter((p) => {
     const key = p.prompt_text.toLowerCase().trim()
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
+
+  return qualityFilterProbes(deduped, inference, 20)
 }
