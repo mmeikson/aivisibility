@@ -74,15 +74,17 @@ export async function scoreSocialProof(
   const brandDomain = brand.toLowerCase().replace(/[^a-z0-9]/g, '')
 
   // Phase 1 — discover relevant review sites (2 parallel calls)
-  // Category is included in the brand review search to avoid collisions where the
-  // brand name matches an unrelated entity (e.g. a drug, a place, another company).
-  const [brandReviewsResult, bestCategoryResult] = await Promise.allSettled([
-    serpSearch(`"${brand}" ${category} reviews`, 10),
+  // Both searches are brand-agnostic: we want to find which sites review and rank
+  // tools in this category, not which sites mention this specific brand. Brand-specific
+  // searches surface competitor product pages (which mention the brand as a rival),
+  // not review sites.
+  const [categoryReviewsResult, bestCategoryResult] = await Promise.allSettled([
+    serpSearch(`${category} reviews`, 10),
     serpSearch(`best ${category}`, 20),
   ])
 
   const discoveryResults: SerpResult[] = []
-  if (brandReviewsResult.status === 'fulfilled') discoveryResults.push(brandReviewsResult.value)
+  if (categoryReviewsResult.status === 'fulfilled') discoveryResults.push(categoryReviewsResult.value)
   if (bestCategoryResult.status === 'fulfilled') discoveryResults.push(bestCategoryResult.value)
 
   const topDomains = extractTopDomains(discoveryResults, brandDomain, 5)
