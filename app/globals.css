@@ -18,8 +18,8 @@
   --text-lg: 1.25rem;
 
   --color-healthy: #16a34a;
-  --color-moderate: #CEAC01;
-  --color-weak: #c2410c;
+  --color-moderate: #8fa83d;
+  --color-weak: #CEAC01;
   --color-critical: #b91c1c;
 
   --color-ring: var(--ring);
@@ -67,18 +67,18 @@
 
 /* Severity color classes */
 .severity-healthy  { color: #16a34a; }
-.severity-moderate { color: #CEAC01; }
-.severity-weak     { color: #c2410c; }
+.severity-moderate { color: #8fa83d; }
+.severity-weak     { color: #CEAC01; }
 .severity-critical { color: #b91c1c; }
 
 .severity-bar-healthy  { background: #16a34a; }
-.severity-bar-moderate { background: #CEAC01; }
-.severity-bar-weak     { background: #c2410c; }
+.severity-bar-moderate { background: #8fa83d; }
+.severity-bar-weak     { background: #CEAC01; }
 .severity-bar-critical { background: #b91c1c; }
 
 .severity-bg-healthy  { background: #f0fdf4; border-color: #bbf7d0; }
-.severity-bg-moderate { background: #fffbeb; border-color: #fde68a; }
-.severity-bg-weak     { background: #fff7ed; border-color: #fed7aa; }
+.severity-bg-moderate { background: #f6f8ec; border-color: #d4e49e; }
+.severity-bg-weak     { background: #fffbeb; border-color: #fde68a; }
 .severity-bg-critical { background: #fef2f2; border-color: #fecaca; }
 
 /* Slide-over animation */
