@@ -73,7 +73,7 @@ export const runAnalysis = inngest.createFunction(
     })
 
     // Step 3: Business understanding
-    const inference = await step.run('business-understanding', async () => {
+    let inference = await step.run('business-understanding', async () => {
       await emitEvent(reportId, 'crawl_done', 'Understanding your business...')
       const result = await inferBusinessContext(crawlResult)
 
@@ -351,7 +351,39 @@ export const runAnalysis = inngest.createFunction(
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 
-    // Step 6.5: Generate per-platform summaries (non-fatal — failure skips summaries, not scoring)
+    // Step 6.5a: Enrich competitor list from probe responses
+    // competitor_mentions is extracted from every probe response by the parser.
+    // Aggregate by frequency and merge any new names into the report so the
+    // competitive ranking chart and recommendations reflect the full landscape.
+    inference = await step.run('enrich-competitors', async () => {
+      const allProbes = await getProbesByReport(reportId)
+      const freq: Record<string, number> = {}
+      for (const probe of allProbes) {
+        for (const name of probe.parsed_json?.competitor_mentions ?? []) {
+          const key = name.trim()
+          if (!key) continue
+          freq[key] = (freq[key] ?? 0) + 1
+        }
+      }
+
+      const existing = new Set(inference.competitors.map((c) => c.toLowerCase()))
+      const brandName = inference.company_name.toLowerCase()
+
+      const newCompetitors = Object.entries(freq)
+        .filter(([name]) => !existing.has(name.toLowerCase()) && !name.toLowerCase().includes(brandName))
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([name]) => name)
+
+      if (newCompetitors.length === 0) return inference
+
+      const merged = [...inference.competitors, ...newCompetitors]
+      const updatedInference = { ...inference, competitors: merged }
+      await updateReport(reportId, { competitors: merged, inference_json: updatedInference })
+      return updatedInference
+    })
+
+    // Step 6.5c: Generate per-platform summaries (non-fatal — failure skips summaries, not scoring)
     await step.run('platform-summaries', async () => {
       try {
         const allProbes = await getProbesByReport(reportId)
