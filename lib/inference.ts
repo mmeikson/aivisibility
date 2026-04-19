@@ -19,6 +19,19 @@ export async function inferBusinessContext(site: CrawledSite): Promise<Inference
     .join('\n\n')
     .slice(0, 12_000) // ~3k tokens
 
+  // If the user submitted a product-specific URL (e.g. atlassian.com/software/jira),
+  // tell the model to focus on that product rather than the parent company.
+  const urlHint = (() => {
+    try {
+      const u = new URL(site.inputUrl)
+      const path = u.pathname.replace(/\/$/, '')
+      if (path.length > 1) {
+        return `\nIMPORTANT: The user submitted this specific URL: ${site.inputUrl}. If this is a product page within a larger company's site (e.g. /software/jira on atlassian.com), extract information about THAT specific product — not the parent company. Use the product name as company_name.\n`
+      }
+    } catch { /* ignore */ }
+    return ''
+  })()
+
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
@@ -27,7 +40,7 @@ export async function inferBusinessContext(site: CrawledSite): Promise<Inference
       {
         role: 'user',
         content: `You are analyzing a company website to extract structured business information for an AI visibility audit.
-
+${urlHint}
 Analyze the following website content and return a JSON object with these exact fields:
 
 {

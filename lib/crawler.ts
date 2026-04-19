@@ -8,6 +8,7 @@ export interface CrawlResult {
 
 export interface CrawledSite {
   baseUrl: string
+  inputUrl: string
   pages: CrawlResult[]
 }
 
@@ -88,9 +89,22 @@ async function fetchPage(url: string): Promise<CrawlResult> {
 export async function crawlSite(inputUrl: string): Promise<CrawledSite> {
   const base = new URL(inputUrl)
   const baseUrl = `${base.protocol}//${base.host}`
+  const productPath = base.pathname.replace(/\/$/, '') // e.g. "/software/jira"
 
-  // Pages to try, in priority order
-  const pagePaths = ['/', '/about', '/about-us', '/pricing', '/product', '/features']
+  // If the submitted URL has a meaningful path (product page within a larger site),
+  // prioritise crawling that product's own pages rather than the root domain.
+  const hasProductPath = productPath.length > 1
+
+  const pagePaths = hasProductPath
+    ? [
+        productPath,
+        `${productPath}/pricing`,
+        `${productPath}/features`,
+        `${productPath}/product`,
+        '/',
+        '/about',
+      ]
+    : ['/', '/about', '/about-us', '/pricing', '/product', '/features']
 
   const results = await Promise.all(
     pagePaths.map((path) => fetchPage(`${baseUrl}${path}`))
@@ -98,5 +112,5 @@ export async function crawlSite(inputUrl: string): Promise<CrawledSite> {
 
   const pages = results.filter((r) => r.status === 'ok')
 
-  return { baseUrl, pages }
+  return { baseUrl, pages, inputUrl }
 }
