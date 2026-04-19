@@ -90,15 +90,20 @@ export async function generateIcpPersonas(inference: InferenceResult): Promise<I
       content: `Generate 3 distinct ideal customer profiles for the following brand.
 
 Brand: ${inference.company_name}
+Description: ${inference.canonical_description}
 Category: ${inference.category}
-Use case: ${inference.primary_use_case}
+Primary use case: ${inference.primary_use_case}
 Target customer: ${inference.target_customer}
+Key competitors: ${inference.competitors.slice(0, 5).join(', ')}
 
-Each profile should represent a meaningfully different type of customer — different scale, role, or situation.
+IMPORTANT: Base the personas on who this brand is PRIMARILY positioned for — the customers their marketing, pricing, and product decisions are clearly aimed at. Do NOT generate personas for the broadest possible addressable market. Use the description and competitive positioning as the strongest signal.
+
+Each profile should represent a meaningfully different type of customer in that primary market — different team size, role, or specific pain point — but all should feel like the brand's core buyers.
+
 Return a JSON array with objects containing:
-- "label": short name for this customer type (e.g. "Self-managing landlord")
-- "context": one first-person sentence establishing their situation (e.g. "I self-manage 4 units across two properties")
-- "primary_need": what they are primarily looking for (e.g. "collect rent online without a property manager")
+- "label": short name for this customer type (e.g. "Solo SaaS founder")
+- "context": one first-person sentence establishing their situation (e.g. "I'm building my SaaS product solo and shipping new features every week")
+- "primary_need": what they are primarily looking for (e.g. "lightweight issue tracking without Jira overhead")
 
 Return ONLY valid JSON, no explanation.`,
     }],
