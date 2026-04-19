@@ -107,7 +107,8 @@ async function qualityFilterProbes(
 Select the best ${variableBudget} probes from the list below. Criteria:
 - Sounds like a real user query (natural language, not marketing copy)
 - No near-duplicate intents — each probe should surface different signal
-- Discovery probes must vary in shape: feature-focused, outcome-focused, persona-focused, etc.
+- Discovery probes must vary in shape: feature-focused, persona-focused, budget-focused, etc.
+- Job-to-be-done probes must invite a product or service recommendation as the answer — REJECT any that read as process or management questions where the natural answer is behavioral advice, not a product
 - Prefer specific, concrete phrasings over generic ones
 
 Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
@@ -157,20 +158,22 @@ Company details:
 Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
 Types and counts:
-1. "discovery" (8 prompts) — prompts someone would use to find tools in this category.
+1. "discovery" (8 prompts) — prompts someone would use to find products or services in this category.
    Each must have a DIFFERENT query shape — do not just paraphrase the same question:
-   - feature-focused: "Best tools for [specific feature]"
-   - outcome-focused: "How do I [achieve outcome] faster"
-   - persona-focused: "Best [category] for [specific role/team type]"
-   - budget/scale-focused: "Affordable [category] for startups"
-   - comparison-seeking: "What are the top [category] alternatives to [known tool]"
+   - feature-focused: "Best [category] for [specific feature or capability]"
+   - persona-focused: "Best [category] for [specific type of customer]"
+   - budget/scale-focused: "Affordable [category] for [customer segment]"
+   - comparison-seeking: "What are the top [category] alternatives to [known competitor]"
+   - outcome-focused: "Best [category] to help with [specific outcome]"
    Do NOT include ${inference.company_name} in these prompts.
 
 2. "comparison" (4 prompts) — natural user comparisons involving ${inference.company_name} and a competitor.
    Use a different competitor each time. Make them sound like real user questions, not templates.
 
-3. "job_to_be_done" (6 prompts) — framed around the specific task or problem, not the category name.
-   These should describe the problem the user is trying to solve in plain language.
+3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
+   CRITICAL: frame these so that recommending a product or service is the natural answer.
+   Use "I need...", "I'm looking for...", "What's the best X for..." framing.
+   Avoid "How do I..." framing — that invites process advice, not product recommendations.
    Do NOT include ${inference.company_name} in these prompts.
 
 Rules:
