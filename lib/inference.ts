@@ -189,17 +189,16 @@ ${JSON.stringify(input, null, 2)}`,
 
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
-    ? `3. "job_to_be_done" (6 prompts) — mix of two styles:
-   a) One prompt per customer profile below (${icpPersonas.length} prompts): write in first person using their context as a preamble, then state their need as a question. Format: "[context sentence]. [question]". Each profile must produce exactly one prompt with a DIFFERENT context preamble.
-   b) ${6 - icpPersonas.length} additional prompts: direct needs using "I need...", "I'm looking for...", or "What's the best X for..." framing — no preamble, different intents from the ICP prompts above.
-   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
+    ? `3. "job_to_be_done" (6 prompts) — short, terse queries like someone would type into a search bar or ask an AI assistant. Think 5–12 words, not paragraphs.
+   a) One prompt per customer profile below (${icpPersonas.length} prompts): distill each profile's need into a compact phrase anchored to their specific context (team size, role, or pain). Examples: "issue tracking for 10-person dev team", "replace jira in a large engineering org", "lightweight roadmapping tool for solo founders".
+   b) ${6 - icpPersonas.length} additional prompts: equally short direct queries — "best X for Y" or "[verb] [product category] for [context]" — different intents from the ICP prompts above.
+   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these. Do NOT write multi-sentence prompts.
 
 Customer profiles for (a):
 ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
-    : `3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
-   CRITICAL: frame these so that recommending a product or service is the natural answer.
-   Use "I need...", "I'm looking for...", "What's the best X for..." framing.
-   Avoid "How do I..." framing — that invites process advice, not product recommendations.
+    : `3. "job_to_be_done" (6 prompts) — short, terse queries like someone would type into a search bar or ask an AI assistant. Think 5–12 words, not paragraphs.
+   Examples of the right style: "issue tracking for 10-person dev team", "replace jira in a large engineering org", "best project management tool for early-stage startups".
+   CRITICAL: frame these so that recommending a product or service is the natural answer. Do NOT write multi-sentence prompts.
    Do NOT include ${inference.company_name} in these prompts.`
 
   const response = await getClient().messages.create({
@@ -220,23 +219,25 @@ Company details:
 
 Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
+CRITICAL STYLE RULE: All prompts must be short and terse — 5 to 15 words max. Write like someone typing into a search bar or asking an AI assistant quickly. No long sentences, no preambles, no "I'm a [role] who does X and needs Y" constructions.
+
 Types and counts:
-1. "discovery" (8 prompts) — prompts someone would use to find products or services in this category.
-   Each must have a DIFFERENT query shape — do not just paraphrase the same question:
-   - feature-focused: "Best [category] for [specific feature or capability]"
-   - persona-focused: "Best [category] for [specific type of customer]"
-   - budget/scale-focused: "Affordable [category] for [customer segment]"
-   - comparison-seeking: "What are the top [category] alternatives to [known competitor]"
-   - outcome-focused: "Best [category] to help with [specific outcome]"
+1. "discovery" (8 prompts) — short search-bar queries to find products in this category.
+   Each must have a DIFFERENT query shape:
+   - feature-focused: "best [category] for [specific feature]"
+   - persona-focused: "[category] for [specific customer type]"
+   - budget/scale-focused: "affordable [category] for [segment]"
+   - comparison-seeking: "top [category] alternatives to [competitor]"
+   - outcome-focused: "[category] that [does specific outcome]"
    Do NOT include ${inference.company_name} in these prompts.
 
-2. "comparison" (4 prompts) — natural user comparisons involving ${inference.company_name} and a competitor.
-   Use a different competitor each time. Make them sound like real user questions, not templates.
+2. "comparison" (4 prompts) — terse head-to-head queries involving ${inference.company_name} and a competitor.
+   Use a different competitor each time. Examples: "${inference.company_name} vs [Competitor]", "is ${inference.company_name} better than [Competitor]", "[Competitor] alternative to ${inference.company_name}".
 
 ${jtbdSection}
 
 Rules:
-- Every prompt must sound like something a real user would type into ChatGPT or Google
+- 5–15 words per prompt, no exceptions
 - No repetition of intent across prompts — each should surface different signal
 - Return ONLY a valid JSON array, no explanation
 
@@ -253,11 +254,11 @@ Rules:
   // Entity check probes: measure what AI models know about the brand directly
   const entityCheckProbes: GeneratedProbe[] = [
     {
-      prompt_text: `What is ${inference.company_name}? Describe what they do and who they serve.`,
+      prompt_text: `What is ${inference.company_name}?`,
       prompt_type: 'entity_check',
     },
     {
-      prompt_text: `Tell me about ${inference.company_name} — what product or service do they offer?`,
+      prompt_text: `What does ${inference.company_name} do?`,
       prompt_type: 'entity_check',
     },
   ]
@@ -275,22 +276,22 @@ Rules:
     .filter((c) => !comparisonCompetitors.has(c))
     .slice(0, 3)
     .map((competitor) => ({
-      prompt_text: `Which is better for ${inference.category}: ${inference.company_name} or ${competitor}? Recommend one.`,
+      prompt_text: `${inference.company_name} vs ${competitor}`,
       prompt_type: 'pairwise' as const,
     }))
 
   // Fixed ranking probes
   const rankingProbes: GeneratedProbe[] = [
     {
-      prompt_text: `What ${inference.category} tools would you recommend for ${inference.target_customer}? Give me your top picks.`,
+      prompt_text: `best ${inference.category} for ${inference.target_customer}`,
       prompt_type: 'discovery',
     },
     {
-      prompt_text: `I'm looking for ${inference.category} software. What would you suggest?`,
+      prompt_text: `best ${inference.category} software right now`,
       prompt_type: 'job_to_be_done',
     },
     {
-      prompt_text: `What are the top 5 ${inference.category} tools right now? Rank them from best to worst.`,
+      prompt_text: `top ${inference.category} tools ranked`,
       prompt_type: 'ranking',
     },
   ]
