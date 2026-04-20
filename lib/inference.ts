@@ -151,14 +151,16 @@ async function qualityFilterProbes(
       temperature: 0,
       messages: [{
         role: 'user',
-        content: `You are quality-checking AI visibility test probes for ${inference.company_name}, a ${inference.category} company.
+        content: `You are quality-checking AI visibility test probes for ${inference.company_name}, a ${inference.category} company targeting: ${inference.target_customer}.
 
 Select the best ${variableBudget} probes from the list below. Criteria:
-- Sounds like a real user query (natural language, not marketing copy)
+- Sounds like something a real person would ask an AI assistant — conversational and natural, not marketing copy or a formal structured prompt
+- REJECT probes that follow the "[long context setup]. [explicit question]" pattern — that's not how people naturally write. Brief context is fine ("we're a 20-person team, what's best for...") but multi-sentence preambles are not
+- Relevant to the brand's actual target customer — REJECT any probe targeting a customer segment or use case clearly outside this brand's positioning
 - No near-duplicate intents — each probe should surface different signal
-- Discovery probes must vary in shape: feature-focused, persona-focused, budget-focused, etc.
+- Discovery probes must vary in shape: feature-focused, persona-focused, context-focused, outcome-focused, etc.
 - Job-to-be-done probes must invite a product or service recommendation as the answer — REJECT any that read as process or management questions where the natural answer is behavioral advice, not a product
-- Prefer specific, concrete phrasings over generic ones
+- Prefer specific, concrete phrasings over vague generic ones
 
 Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
 
@@ -189,16 +191,17 @@ ${JSON.stringify(input, null, 2)}`,
 
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
-    ? `3. "job_to_be_done" (6 prompts) — short, terse queries like someone would type into a search bar or ask an AI assistant. Think 5–12 words, not paragraphs.
-   a) One prompt per customer profile below (${icpPersonas.length} prompts): distill each profile's need into a compact phrase anchored to their specific context (team size, role, or pain). Examples: "issue tracking for 10-person dev team", "replace jira in a large engineering org", "lightweight roadmapping tool for solo founders".
-   b) ${6 - icpPersonas.length} additional prompts: equally short direct queries — "best X for Y" or "[verb] [product category] for [context]" — different intents from the ICP prompts above.
-   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these. Do NOT write multi-sentence prompts.
+    ? `3. "job_to_be_done" (6 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
+   a) One prompt per customer profile below (${icpPersonas.length} prompts): capture each profile's need naturally, anchored to their specific situation. Adapt to the brand type. Software: "we're a 10-person dev team looking for something lighter than Jira". Services: "need an accountant who works with freelancers doing international client work". Consumer: "looking for meal kit delivery, family of 4 with a picky 8-year-old".
+   b) ${6 - icpPersonas.length} additional prompts: direct queries with different intents from the ICP prompts above.
+   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
 
 Customer profiles for (a):
 ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
-    : `3. "job_to_be_done" (6 prompts) — short, terse queries like someone would type into a search bar or ask an AI assistant. Think 5–12 words, not paragraphs.
-   Examples of the right style: "issue tracking for 10-person dev team", "replace jira in a large engineering org", "best project management tool for early-stage startups".
-   CRITICAL: frame these so that recommending a product or service is the natural answer. Do NOT write multi-sentence prompts.
+    : `3. "job_to_be_done" (6 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
+   Adapt to the brand type. Software: "need something lighter than Jira for sprint planning, team of 12". Services: "looking for an accountant who handles freelancers with international clients". Consumer: "best meal kit delivery for a family with picky eaters".
+   CRITICAL: frame these so that recommending a product or service is the natural answer.
+   CRITICAL: all queries must be within the brand's target customer and use case — do NOT generate queries for customer segments outside the brand's positioning.
    Do NOT include ${inference.company_name} in these prompts.`
 
   const response = await getClient().messages.create({
@@ -219,16 +222,18 @@ Company details:
 
 Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
-CRITICAL STYLE RULE: All prompts must be short and terse — 5 to 15 words max. Write like someone typing into a search bar or asking an AI assistant quickly. No long sentences, no preambles, no "I'm a [role] who does X and needs Y" constructions.
+CRITICAL STYLE RULE: Write like a real person asking an AI assistant — conversational, natural, and direct. 1–2 sentences at most. Avoid the formal "[long context sentence]. [explicit question]" pattern — real users don't structure their thoughts that way. They might include brief context ("we're a 20-person team", "I've been using Asana but...") but they get to the point quickly. Not too terse either — a fragment like "issue tracking tool" is fine, but so is "we're a growing SaaS startup and need something better than spreadsheets for tracking bugs".
+
+CRITICAL RELEVANCE RULE: Every prompt must be anchored to the brand's actual target customer and use case. Do NOT generate prompts for customer segments or use cases outside the brand's positioning (e.g. don't generate "affordable tool for early-stage startups" for an enterprise-focused brand). Every prompt should be a query where this brand is a plausible answer.
 
 Types and counts:
-1. "discovery" (8 prompts) — short search-bar queries to find products in this category.
-   Each must have a DIFFERENT query shape:
-   - feature-focused: "best [category] for [specific feature]"
-   - persona-focused: "[category] for [specific customer type]"
-   - budget/scale-focused: "affordable [category] for [segment]"
+1. "discovery" (8 prompts) — short search-bar queries to find products/services in this category, grounded in the brand's actual target customer.
+   Each must have a DIFFERENT query shape. Adapt the shapes to fit the brand — not all will apply:
+   - feature-focused: "best [category] for [specific feature or capability]"
+   - persona-focused: "[category] for [specific buyer type or role]"
+   - context-focused: "[category] for [situation, scale, or setting relevant to target customer]"
    - comparison-seeking: "top [category] alternatives to [competitor]"
-   - outcome-focused: "[category] that [does specific outcome]"
+   - outcome-focused: "[category] for [specific result the target customer wants]"
    Do NOT include ${inference.company_name} in these prompts.
 
 2. "comparison" (4 prompts) — terse head-to-head queries involving ${inference.company_name} and a competitor.
@@ -237,7 +242,6 @@ Types and counts:
 ${jtbdSection}
 
 Rules:
-- 5–15 words per prompt, no exceptions
 - No repetition of intent across prompts — each should surface different signal
 - Return ONLY a valid JSON array, no explanation
 
