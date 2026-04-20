@@ -147,20 +147,19 @@ async function qualityFilterProbes(
   try {
     const res = await getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
+      max_tokens: 1024,
       temperature: 0,
       messages: [{
         role: 'user',
-        content: `You are quality-checking AI visibility test probes for ${inference.company_name}, a ${inference.category} company targeting: ${inference.target_customer}.
+        content: `You are selecting the best AI visibility test probes for ${inference.company_name}, a ${inference.category} company targeting: ${inference.target_customer}.
 
-Select the best ${variableBudget} probes from the list below. Criteria:
-- Sounds like something a real person would ask an AI assistant — conversational and natural, not marketing copy or a formal structured prompt
-- REJECT probes that follow the "[long context setup]. [explicit question]" pattern — that's not how people naturally write. Brief context is fine ("we're a 20-person team, what's best for...") but multi-sentence preambles are not
-- Relevant to the brand's actual target customer — REJECT any probe targeting a customer segment or use case clearly outside this brand's positioning
-- No near-duplicate intents — each probe should surface different signal
-- Discovery probes must vary in shape: feature-focused, persona-focused, context-focused, outcome-focused, etc.
-- Job-to-be-done probes must invite a product or service recommendation as the answer — REJECT any that read as process or management questions where the natural answer is behavioral advice, not a product
-- Prefer specific, concrete phrasings over vague generic ones
+Pick the best ${variableBudget} probes from the list. Most probes will be good — you are ranking and selecting, not aggressively filtering. Prefer probes that:
+- Cover diverse intents (don't pick near-duplicates that surface the same signal)
+- Are grounded in the brand's actual target customer and use case
+- Naturally invite a product or service recommendation (not process advice)
+- Sound like something a real person would type — conversational, not marketing copy
+
+Only exclude a probe if it clearly fails one of those criteria. You should return close to ${variableBudget} indices.
 
 Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
 
@@ -191,14 +190,14 @@ ${JSON.stringify(input, null, 2)}`,
 
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
-    ? `3. "job_to_be_done" (6 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
+    ? `3. "job_to_be_done" (8 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
    a) One prompt per customer profile below (${icpPersonas.length} prompts): capture each profile's need naturally, anchored to their specific situation. Adapt to the brand type. Software: "we're a 10-person dev team looking for something lighter than Jira". Services: "need an accountant who works with freelancers doing international client work". Consumer: "looking for meal kit delivery, family of 4 with a picky 8-year-old".
-   b) ${6 - icpPersonas.length} additional prompts: direct queries with different intents from the ICP prompts above.
-   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
+   b) ${8 - icpPersonas.length} additional prompts: direct queries with different intents from the ICP prompts above.
+   All 8 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
 
 Customer profiles for (a):
 ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
-    : `3. "job_to_be_done" (6 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
+    : `3. "job_to_be_done" (8 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
    Adapt to the brand type. Software: "need something lighter than Jira for sprint planning, team of 12". Services: "looking for an accountant who handles freelancers with international clients". Consumer: "best meal kit delivery for a family with picky eaters".
    CRITICAL: frame these so that recommending a product or service is the natural answer.
    CRITICAL: all queries must be within the brand's target customer and use case — do NOT generate queries for customer segments outside the brand's positioning.
@@ -206,7 +205,7 @@ ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})
 
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    max_tokens: 3000,
     temperature: 0,
     messages: [
       {
@@ -220,14 +219,14 @@ Company details:
 - Target customer: ${inference.target_customer}
 - Known competitors: ${inference.competitors.join(', ')}
 
-Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
+Generate 24 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
 CRITICAL STYLE RULE: Write like a real person asking an AI assistant — conversational, natural, and direct. 1–2 sentences at most. Avoid the formal "[long context sentence]. [explicit question]" pattern — real users don't structure their thoughts that way. They might include brief context ("we're a 20-person team", "I've been using Asana but...") but they get to the point quickly. Not too terse either — a fragment like "issue tracking tool" is fine, but so is "we're a growing SaaS startup and need something better than spreadsheets for tracking bugs".
 
 CRITICAL RELEVANCE RULE: Every prompt must be anchored to the brand's actual target customer and use case. Do NOT generate prompts for customer segments or use cases outside the brand's positioning (e.g. don't generate "affordable tool for early-stage startups" for an enterprise-focused brand). Every prompt should be a query where this brand is a plausible answer.
 
 Types and counts:
-1. "discovery" (8 prompts) — short search-bar queries to find products/services in this category, grounded in the brand's actual target customer.
+1. "discovery" (10 prompts) — short search-bar queries to find products/services in this category, grounded in the brand's actual target customer.
    Each must have a DIFFERENT query shape. Adapt the shapes to fit the brand — not all will apply:
    - feature-focused: "best [category] for [specific feature or capability]"
    - persona-focused: "[category] for [specific buyer type or role]"
@@ -236,7 +235,7 @@ Types and counts:
    - outcome-focused: "[category] for [specific result the target customer wants]"
    Do NOT include ${inference.company_name} in these prompts.
 
-2. "comparison" (4 prompts) — terse head-to-head queries involving ${inference.company_name} and a competitor.
+2. "comparison" (6 prompts) — terse head-to-head queries involving ${inference.company_name} and a competitor.
    Use a different competitor each time. Examples: "${inference.company_name} vs [Competitor]", "is ${inference.company_name} better than [Competitor]", "[Competitor] alternative to ${inference.company_name}".
 
 ${jtbdSection}
@@ -300,21 +299,13 @@ Rules:
     },
   ]
 
-  // Assemble and deduplicate
-  // Two passes: (1) exact match, (2) shared opening sentence (catches same-preamble ICP variants)
+  // Assemble and deduplicate on exact match only
   const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes]
   const seenExact = new Set<string>()
-  const seenOpening = new Set<string>()
   const deduped = allProbes.filter((p) => {
     const key = p.prompt_text.toLowerCase().trim()
     if (seenExact.has(key)) return false
     seenExact.add(key)
-    // Extract opening sentence (up to first period/question mark followed by space or end)
-    const opening = key.match(/^[^.?!]{20,}[.?!]/)?.[0]?.trim()
-    if (opening) {
-      if (seenOpening.has(opening)) return false
-      seenOpening.add(opening)
-    }
     return true
   })
 
