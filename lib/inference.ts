@@ -129,65 +129,6 @@ Return ONLY valid JSON, no explanation.`,
 
 // ---- Probe generation ----
 
-async function qualityFilterProbes(
-  probes: GeneratedProbe[],
-  inference: InferenceResult,
-  maxCount: number
-): Promise<GeneratedProbe[]> {
-  // Fixed probe types must be preserved — they feed directly into scoring
-  const FIXED_TYPES = new Set(['entity_check', 'pairwise', 'ranking'])
-  const fixed = probes.filter((p) => FIXED_TYPES.has(p.prompt_type))
-  const variable = probes.filter((p) => !FIXED_TYPES.has(p.prompt_type))
-  const variableBudget = maxCount - fixed.length
-
-  if (variable.length <= variableBudget) return probes
-
-  const input = variable.map((p, i) => ({ index: i, prompt_text: p.prompt_text, prompt_type: p.prompt_type }))
-
-  try {
-    const res = await getClient().messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      temperature: 0,
-      messages: [{
-        role: 'user',
-        content: `You are selecting the best AI visibility test probes for ${inference.company_name}, a ${inference.category} company targeting: ${inference.target_customer}.
-
-Pick the best ${variableBudget} probes from the list. Most probes will be good — you are ranking and selecting, not aggressively filtering. Prefer probes that:
-- Cover diverse intents (don't pick near-duplicates that surface the same signal)
-- Are grounded in the brand's actual target customer and use case
-- Naturally invite a product or service recommendation (not process advice)
-- Sound like something a real person would type — conversational, not marketing copy
-
-Only exclude a probe if it clearly fails one of those criteria. You should return close to ${variableBudget} indices.
-
-Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
-
-Probes:
-${JSON.stringify(input, null, 2)}`,
-      }],
-    })
-
-    const text = res.content[0]?.type === 'text' ? res.content[0].text : ''
-    const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
-    const indices = JSON.parse(jsonStr) as number[]
-    const kept = indices
-      .filter((i) => i >= 0 && i < variable.length)
-      .slice(0, variableBudget)
-      .map((i) => variable[i])
-
-    if (kept.length < variableBudget * 0.5) {
-      console.warn('[qualityFilterProbes] filter returned too few — falling back')
-      return [...fixed, ...variable.slice(0, variableBudget)]
-    }
-
-    return [...fixed, ...kept]
-  } catch (err) {
-    console.warn('[qualityFilterProbes] failed, falling back:', err instanceof Error ? err.message : err)
-    return [...fixed, ...variable.slice(0, variableBudget)]
-  }
-}
-
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
     ? `3. "job_to_be_done" (8 prompts) — queries like someone would ask an AI assistant when they have a problem to solve. Conversational and direct, 1–2 sentences max. Brief context is fine but avoid the formal "[long setup]. [explicit question]" pattern.
@@ -309,5 +250,5 @@ Rules:
     return true
   })
 
-  return qualityFilterProbes(deduped, inference, 20)
+  return deduped.slice(0, 20)
 }
