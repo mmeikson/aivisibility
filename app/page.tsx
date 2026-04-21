@@ -137,7 +137,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="px-8 py-4 border-t border-[#E5E2DC] flex items-center justify-between">
-        <span className="text-xs text-[#ABABAB]">Analysis takes 2–4 minutes. No account required.</span>
+        <span className="text-xs text-[#ABABAB]">Analysis takes 4–6 minutes. No account required.</span>
         <span className="text-xs text-[#ABABAB] font-mono">v1</span>
       </footer>
     </main>

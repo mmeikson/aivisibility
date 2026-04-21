@@ -81,7 +81,7 @@ function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () 
       <button
         onClick={onClick}
         title={mentioned ? `${strength} recommendation` : 'Not mentioned'}
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:opacity-70 transition-opacity"
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full ring-2 ring-transparent hover:ring-[#ABABAB] transition-all"
       >
         <span className={`w-2 h-2 rounded-full ${dotClass}`} />
       </button>
