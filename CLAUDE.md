@@ -42,7 +42,7 @@ Set `INNGEST_DEV=1` and `INNGEST_EVENT_KEY=local` in `.env.local` for local mode
 
 ### Platform probe implementations (`lib/inngest/probe-platform.ts`)
 
-- **OpenAI**: `gpt-4o-search-preview` with live web search. No `temperature` param (unsupported by this model).
+- **OpenAI**: `gpt-5.4`. No web search. `temperature: 0.3`.
 - **Anthropic**: `claude-sonnet-4-6` with `web_search_20250305` tool. `temperature: 0`.
 - **Perplexity**: `sonar-pro` via OpenAI-compatible API. `temperature: 0`. Rate-limited with 300–600ms jitter.
 - **Google**: `gemini-2.5-flash` with `googleSearch` grounding tool. `temperature: 0`. Grounding redirect URLs are resolved to real URLs via HEAD request.

@@ -245,9 +245,8 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult, 
   }, signal)
 }
 
-// ---- OpenAI direct API (gpt-4o-search-preview) ----
-// Fast parallel execution via Chat Completions with live web search.
-// No temperature param — unsupported by gpt-4o-search-preview.
+// ---- OpenAI direct API (gpt-5.4) ----
+// Fast parallel execution via Chat Completions. No web search; temperature 0.3.
 
 export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -257,7 +256,8 @@ export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult
     const start = Date.now()
     try {
       const res = await client.chat.completions.create({
-        model: 'gpt-4o-search-preview',
+        model: 'gpt-5.4',
+        temperature: 0.3,
         messages: [
           { role: 'system', content: `You are a careful, analytical assistant. Your goal is to produce responses that closely resemble high-quality ChatGPT outputs.
 
