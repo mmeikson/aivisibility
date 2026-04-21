@@ -81,7 +81,7 @@ function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () 
       <button
         onClick={onClick}
         title={mentioned ? `${strength} recommendation` : 'Not mentioned'}
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full ring-2 ring-transparent hover:ring-[#ABABAB] transition-all"
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full outline outline-2 outline-transparent hover:outline-[#ABABAB] transition-all"
       >
         <span className={`w-2 h-2 rounded-full ${dotClass}`} />
       </button>
@@ -137,7 +137,7 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
               return (
                 <tr
                   key={text}
-                  className={`hover:bg-[#F3F2EF] transition-colors ${!isLast ? 'border-b border-[#E5E2DC]' : ''}`}
+                  className={!isLast ? 'border-b border-[#E5E2DC]' : ''}
                 >
                   <td className="px-5 py-2.5">
                     <div className="flex items-center gap-2.5 min-w-0">
