@@ -8,7 +8,7 @@ function getClient() {
 
 export interface GeneratedProbe {
   prompt_text: string
-  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check' | 'ranking'
+  prompt_type: 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check'
 }
 
 // ---- Business understanding ----
@@ -135,7 +135,7 @@ async function qualityFilterProbes(
   maxCount: number
 ): Promise<GeneratedProbe[]> {
   // Fixed probe types must be preserved — they feed directly into scoring
-  const FIXED_TYPES = new Set(['entity_check', 'pairwise', 'ranking'])
+  const FIXED_TYPES = new Set(['entity_check', 'pairwise'])
   const fixed = probes.filter((p) => FIXED_TYPES.has(p.prompt_type))
   const variable = probes.filter((p) => !FIXED_TYPES.has(p.prompt_type))
   const variableBudget = maxCount - fixed.length
@@ -156,8 +156,8 @@ async function qualityFilterProbes(
 Select the best ${variableBudget} probes from the list below. Criteria:
 - Sounds like a real user query (natural language, not marketing copy)
 - No near-duplicate intents — each probe should surface different signal
-- Discovery probes must vary in shape: feature-focused, persona-focused, budget-focused, etc.
-- Job-to-be-done probes must invite a product or service recommendation as the answer — REJECT any that read as process or management questions where the natural answer is behavioral advice, not a product
+- Discovery probes must use salience-style phrasing — REJECT any containing "best", "top", "rank", "affordable", or "alternatives to" since these force list enumeration and inflate low-salience entities
+- Job-to-be-done probes must use third-person framing and invite a product or service recommendation — REJECT first-person "I need..." phrasing and REJECT process/management questions where the natural answer is behavioral advice
 - Prefer specific, concrete phrasings over generic ones
 
 Return ONLY a JSON array of indices to keep (e.g. [0, 2, 5, ...]). No explanation.
@@ -190,16 +190,17 @@ ${JSON.stringify(input, null, 2)}`,
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
     ? `3. "job_to_be_done" (6 prompts) — mix of two styles:
-   a) One prompt per customer profile below (${icpPersonas.length} prompts): write in first person using their context as a preamble, then state their need as a question. Format: "[context sentence]. [question]". Each profile must produce exactly one prompt with a DIFFERENT context preamble.
-   b) ${6 - icpPersonas.length} additional prompts: direct needs using "I need...", "I'm looking for...", or "What's the best X for..." framing — no preamble, different intents from the ICP prompts above.
-   All 6 must naturally invite a product or service recommendation. Do NOT include ${inference.company_name} in any of these.
+   a) One prompt per customer profile below (${icpPersonas.length} prompts): write in THIRD PERSON using their context as a scene-setter, then ask what solutions are typically used. Format: "[third-person scenario sentence]. What [category] solutions do companies like this typically use?" Each profile must produce exactly one prompt with a DIFFERENT scenario.
+   b) ${6 - icpPersonas.length} additional prompts: third-person scenario framing — "A [customer type] needs [X]. What [category] tools are typically used for this?" or "A company is [doing X]. What [category] options do they typically consider?" — no preamble, different intents from the ICP prompts above.
+   All 6 must naturally invite a product or service recommendation without forcing a ranked list. Do NOT include ${inference.company_name} in any of these.
 
 Customer profiles for (a):
 ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
-    : `3. "job_to_be_done" (6 prompts) — a specific need or problem the user wants a product or service to solve.
-   CRITICAL: frame these so that recommending a product or service is the natural answer.
-   Use "I need...", "I'm looking for...", "What's the best X for..." framing.
-   Avoid "How do I..." framing — that invites process advice, not product recommendations.
+    : `3. "job_to_be_done" (6 prompts) — a specific need or problem framed as a third-person scenario.
+   CRITICAL: use third-person framing so recommending a product or service is the natural answer.
+   Use "A company needs...", "A [customer type] is looking for...", "What [category] do [customer type] typically use to..." framing.
+   Avoid first-person "I need..." and avoid "How do I..." (invites process advice, not product recommendations).
+   Avoid forcing a ranked list — the prompt should invite a natural mention, not enumeration.
    Do NOT include ${inference.company_name} in these prompts.`
 
   const response = await getClient().messages.create({
@@ -221,13 +222,15 @@ Company details:
 Generate 18 prompts across three types. Return a JSON array with objects containing "prompt_text" and "prompt_type".
 
 Types and counts:
-1. "discovery" (8 prompts) — prompts someone would use to find products or services in this category.
-   Each must have a DIFFERENT query shape — do not just paraphrase the same question:
-   - feature-focused: "Best [category] for [specific feature or capability]"
-   - persona-focused: "Best [category] for [specific type of customer]"
-   - budget/scale-focused: "Affordable [category] for [customer segment]"
-   - comparison-seeking: "What are the top [category] alternatives to [known competitor]"
-   - outcome-focused: "Best [category] to help with [specific outcome]"
+1. "discovery" (8 prompts) — prompts that measure natural brand salience (does the brand come up organically?).
+   These must NOT use "best", "top", "rank", "affordable", or "alternatives to" — those force list enumeration and inflate low-salience entities.
+   Each must have a DIFFERENT query shape:
+   - known-for: "What companies are known for [specific capability in category]?"
+   - association: "Which [category] tools are most associated with [use case or outcome]?"
+   - persona-fit: "What [category] solutions do [specific customer type] typically use?"
+   - leader: "Who are the leading [category] providers for [specific use case]?"
+   - name-players: "Name [category] firms known for [feature or customer segment]."
+   - general recall: "What companies come to mind in [category]?"
    Do NOT include ${inference.company_name} in these prompts.
 
 2. "comparison" (4 prompts) — natural user comparisons involving ${inference.company_name} and a competitor.
@@ -279,19 +282,19 @@ Rules:
       prompt_type: 'pairwise' as const,
     }))
 
-  // Fixed ranking probes
+  // Fixed salience probes — no ranking or "best" to avoid enumeration pressure
   const rankingProbes: GeneratedProbe[] = [
     {
-      prompt_text: `What ${inference.category} tools would you recommend for ${inference.target_customer}? Give me your top picks.`,
+      prompt_text: `What ${inference.category} tools are widely used by ${inference.target_customer}?`,
       prompt_type: 'discovery',
     },
     {
-      prompt_text: `I'm looking for ${inference.category} software. What would you suggest?`,
+      prompt_text: `A company is evaluating ${inference.category} options. What solutions do businesses like this typically consider?`,
       prompt_type: 'job_to_be_done',
     },
     {
-      prompt_text: `What are the top 5 ${inference.category} tools right now? Rank them from best to worst.`,
-      prompt_type: 'ranking',
+      prompt_text: `Which companies are well-known in the ${inference.category} space?`,
+      prompt_type: 'discovery',
     },
   ]
 
