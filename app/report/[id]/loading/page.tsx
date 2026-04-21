@@ -168,7 +168,7 @@ export default function LoadingPage() {
             <div className="flex justify-between">
               <span className="text-xs font-mono text-[#ABABAB]">{progress}%</span>
               <span className="text-xs font-mono text-[#ABABAB]">
-                {isComplete ? elapsed : `${elapsed} · ~2–4 min`}
+                {isComplete ? elapsed : `${elapsed} · ~4–6 min`}
               </span>
             </div>
           </div>
