@@ -310,6 +310,42 @@ Today's date is ${date}. The user is located in the United States.` },
   }))
 }
 
+// ---- OpenAI with web search (gpt-4o-search-preview) ----
+// Web search is built into the model — no tools param needed.
+// Citations come from message.annotations as url_citation objects.
+
+export async function probeOpenAISearch(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  const date = new Date().toISOString().slice(0, 10)
+  await Promise.all(probes.map(async (probe) => {
+    if (signal?.aborted) return
+    const start = Date.now()
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await (client.chat.completions.create as any)({
+        model: 'gpt-4o-search-preview',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States. When recommending products, services, or companies, default to US-based options unless otherwise specified.`,
+          },
+          { role: 'user', content: probe.prompt_text },
+        ],
+      }, { signal })
+      const message = res.choices?.[0]?.message
+      const text: string = message?.content ?? ''
+      if (!text.trim()) throw new Error('Empty response')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const citations: string[] = (message?.annotations ?? []).filter((a: any) => a.type === 'url_citation').map((a: any) => a.url_citation?.url ?? '').filter(Boolean)
+      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      if (signal?.aborted) return
+      console.error(`[ChatGPT-Search] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
+    }
+  }))
+}
+
 // ---- Google direct API (gemini-2.0-flash with googleSearchRetrieval grounding) ----
 // Uses gemini-2.5-flash with googleSearch grounding.
 // @google/generative-ai 0.24.1 types don't include googleSearch yet — cast to any.

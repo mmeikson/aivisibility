@@ -1,5 +1,5 @@
 import Image from 'next/image'
-import type { ClusterAnalysis, DomainEntry, SourceGapResult } from '@/lib/analysis/source-gaps'
+import type { ClusterAnalysis, ClusterDelta, DomainEntry, SourceGapResult } from '@/lib/analysis/source-gaps'
 
 interface Props {
   result: SourceGapResult
@@ -16,6 +16,49 @@ export function SourceGapAnalysis({ result, companyName }: Props) {
       {activeClusters.map((cluster) => (
         <ClusterPanel key={cluster.cluster.key} cluster={cluster} companyName={companyName} />
       ))}
+    </div>
+  )
+}
+
+const DELTA_CONFIG = {
+  durable: {
+    bg: 'bg-[#F0FDF4]',
+    text: 'text-[#065F46]',
+    dot: 'bg-[#22C55E]',
+    message: 'Visibility is consistent with and without web search — presence is durable across both trained knowledge and current web content.',
+  },
+  web_only: {
+    bg: 'bg-[#FFFBEB]',
+    text: 'text-[#92400E]',
+    dot: 'bg-[#CEAC01]',
+    message: 'Visibility improves with web search — current content is working but presence in AI training data is weaker. Gains may be fragile if rankings change.',
+  },
+  parametric_only: {
+    bg: 'bg-[#FFFBEB]',
+    text: 'text-[#92400E]',
+    dot: 'bg-[#CEAC01]',
+    message: 'Visibility is higher without web search — trained knowledge is stronger than current web content. Current content strategy may be losing ground.',
+  },
+  absent: {
+    bg: 'bg-[#F9F8F6]',
+    text: 'text-[#6C6C6C]',
+    dot: 'bg-[#B8B4AD]',
+    message: 'Low visibility on both parametric and web search.',
+  },
+} as const
+
+function DeltaBanner({ delta }: { delta: ClusterDelta }) {
+  const cfg = DELTA_CONFIG[delta.deltaClass]
+  const pct = (r: number) => `${Math.round(r * 100)}%`
+  return (
+    <div className={`px-4 py-2.5 border-b border-[#E5E2DC] ${cfg.bg} flex items-start gap-2`}>
+      <span className={`w-1.5 h-1.5 rounded-full mt-1 shrink-0 ${cfg.dot}`} />
+      <div className="min-w-0">
+        <span className={`text-[11px] ${cfg.text}`}>{cfg.message}</span>
+        <span className="text-[10px] text-[#6C6C6C] font-mono ml-2">
+          Parametric {pct(delta.parametricMentionRate)} · Web {pct(delta.webMentionRate)}
+        </span>
+      </div>
     </div>
   )
 }
@@ -41,6 +84,9 @@ function ClusterPanel({ cluster, companyName }: { cluster: ClusterAnalysis; comp
           </span>
         </div>
       </div>
+
+      {/* Delta banner */}
+      {cluster.delta && <DeltaBanner delta={cluster.delta} />}
 
       {/* Insufficient data notice */}
       {cluster.totalProbes < 2 && (
@@ -70,6 +116,25 @@ function ClusterPanel({ cluster, companyName }: { cluster: ClusterAnalysis; comp
   )
 }
 
+function PlatformDots({ platformCount }: { platformCount: number }) {
+  const max = 3
+  return (
+    <div className="flex items-center gap-0.5 shrink-0" title={`Cited by ${platformCount} of ${max} search platforms`}>
+      {Array.from({ length: max }).map((_, i) => (
+        <span
+          key={i}
+          className={[
+            'w-1.5 h-1.5 rounded-full',
+            i < platformCount
+              ? platformCount >= 3 ? 'bg-[#22C55E]' : platformCount === 2 ? 'bg-[#CEAC01]' : 'bg-[#B8B4AD]'
+              : 'bg-[#E5E2DC]',
+          ].join(' ')}
+        />
+      ))}
+    </div>
+  )
+}
+
 function DomainRow({ entry, companyName }: { entry: DomainEntry; companyName: string }) {
   const visibleCompetitors = entry.competitorsMentioned.slice(0, 3)
   const extraCount = entry.competitorsMentioned.length - visibleCompetitors.length
@@ -78,8 +143,10 @@ function DomainRow({ entry, companyName }: { entry: DomainEntry; companyName: st
     <div
       className={[
         'flex items-center gap-3 px-4 py-2.5 text-xs',
-        entry.isGap
+        entry.isGap && entry.isHighConfidence
           ? 'border-l-2 border-l-[#CEAC01] bg-[#FFFDF0] pl-3'
+          : entry.isGap
+          ? 'border-l-2 border-l-[#E5E2DC] pl-3'
           : '',
       ].join(' ')}
     >
@@ -110,6 +177,9 @@ function DomainRow({ entry, companyName }: { entry: DomainEntry; companyName: st
       <span className="text-[10px] text-[#6C6C6C] font-mono shrink-0 w-12">
         {entry.citedInProbeCount}/{entry.totalProbesInCluster}
       </span>
+
+      {/* Platform agreement dots */}
+      <PlatformDots platformCount={entry.platformCount} />
 
       {/* Brand presence */}
       <div className="flex items-center gap-1 shrink-0 w-24">

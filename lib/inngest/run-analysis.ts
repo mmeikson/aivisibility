@@ -21,7 +21,7 @@ function startCancellationWatch(reportId: string): { signal: AbortSignal; stop: 
 }
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes, generateIcpPersonas } from '@/lib/inference'
-import { probeOpenAI, probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
+import { probeOpenAI, probeOpenAIDirect, probeOpenAISearch, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -104,15 +104,15 @@ export const runAnalysis = inngest.createFunction(
 
       // Idempotency: if probes already exist from a previous attempt, skip generation
       const existing = await getProbesByReport(reportId)
-      const platformCount = process.env.PERPLEXITY_API_KEY ? 4 : 3
+      const platformCount = 5
       if (existing.length > 0) {
-        const probeCount = existing.length / 4
+        const probeCount = existing.length / 5
         await emitEvent(reportId, 'probes_start', `Running ${probeCount} prompts across ${platformCount} AI platforms...`)
         return
       }
 
       const generated = await generateProbes(inference, inference.icp_personas)
-      const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
+      const platforms = ['openai', 'anthropic', 'perplexity', 'google', 'openai_search'] as const
 
       const rows = generated.flatMap((p) =>
         platforms.map((platform) => ({
@@ -309,6 +309,23 @@ export const runAnalysis = inngest.createFunction(
         }
       })(),
 
+      // ---- OpenAI with web search ----
+      step.run('probe-openai-search', async () => {
+        const probes = await getProbesByPlatform(reportId, 'openai_search')
+        const { signal, stop } = startCancellationWatch(reportId)
+        try {
+          let done = 0
+          await probeOpenAISearch(probes, async (id, u) => {
+            await updateProbe(id, u)
+            if (u.status === 'complete' || u.status === 'failed') {
+              done++
+              await emitEvent(reportId, 'probe_progress', `ChatGPT Search: ${done} of ${probes.length} responses received`)
+            }
+          }, signal)
+          await emitEvent(reportId, 'probe_batch_done', `ChatGPT Search: all ${probes.length} responses received`)
+        } finally { stop() }
+      }),
+
     ])
 
     // Step 5.5: Retry failed probes once
@@ -339,7 +356,8 @@ export const runAnalysis = inngest.createFunction(
       await Promise.allSettled([
         byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
-        byPlatform['openai']     && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
+        byPlatform['openai']        && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
+        byPlatform['openai_search'] && probeOpenAISearch(byPlatform['openai_search'], onResult),
         byPlatform['google']     && process.env.GEMINI_PROVIDER === 'api'  && probeGoogleDirect(byPlatform['google'], onResult),
       ].filter(Boolean))
 
