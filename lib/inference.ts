@@ -50,6 +50,7 @@ Analyze the following website content and return a JSON object with these exact 
   "primary_use_case": "string — the core job the product does for customers",
   "target_customer": "string — who the primary customer is (e.g. 'small business owners', 'enterprise marketing teams')",
   "competitors": ["array of 4-6 competitor company/product names, inferred from the positioning and copy"],
+  "key_features": ["array of 4-6 distinctive product features or capabilities as brief noun phrases (e.g. 'automated rent collection', 'built-in tenant screening', 'mobile-first design') — focus on features that differentiate this product from competitors"],
   "confidence": {
     "company_name": "high|medium|low",
     "canonical_description": "high|medium|low",
@@ -127,6 +128,48 @@ Return ONLY valid JSON, no explanation.`,
   return JSON.parse(jsonStr) as IcpPersona[]
 }
 
+// ---- Feature-match probe generation ----
+
+async function generateFeatureMatchProbes(inference: InferenceResult): Promise<GeneratedProbe[]> {
+  const features = inference.key_features
+  if (!features || features.length === 0) return []
+
+  try {
+    const res = await getClient().messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      temperature: 0,
+      messages: [{
+        role: 'user',
+        content: `Generate ${Math.min(features.length, 5)} short feature-match search queries for ${inference.category}.
+
+These should sound like real user searches for software with a specific capability. Keep each under 12 words. Vary the format:
+- "[category] with [feature]"
+- "What [category] offers [feature]?"
+- "[category] for [customer type] that includes [feature]"
+- "How do [customer type] [achieve outcome]?"
+
+Features to cover (one query per feature):
+${features.slice(0, 5).map((f, i) => `${i + 1}. ${f}`).join('\n')}
+
+Do NOT mention ${inference.company_name} in any query. Do NOT use "best" or "top".
+Return ONLY a JSON array of strings. Example: ["query one", "query two"]`,
+      }],
+    })
+
+    const text = res.content[0]?.type === 'text' ? res.content[0].text : '[]'
+    const jsonStr = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+    const queries = JSON.parse(jsonStr) as string[]
+    return queries.slice(0, 5).map((q) => ({
+      prompt_text: q,
+      prompt_type: 'discovery' as const,
+    }))
+  } catch (err) {
+    console.warn('[generateFeatureMatchProbes] failed:', err instanceof Error ? err.message : err)
+    return []
+  }
+}
+
 // ---- Probe generation ----
 
 async function qualityFilterProbes(
@@ -189,18 +232,16 @@ ${JSON.stringify(input, null, 2)}`,
 
 export async function generateProbes(inference: InferenceResult, icpPersonas?: IcpPersona[]): Promise<GeneratedProbe[]> {
   const jtbdSection = icpPersonas && icpPersonas.length > 0
-    ? `3. "job_to_be_done" (6 prompts) — mix of two styles:
-   a) One prompt per customer profile below (${icpPersonas.length} prompts): write in THIRD PERSON using their context as a scene-setter, then ask what solutions are typically used. Format: "[third-person scenario sentence]. What [category] solutions do companies like this typically use?" Each profile must produce exactly one prompt with a DIFFERENT scenario.
-   b) ${6 - icpPersonas.length} additional prompts: third-person scenario framing — "A [customer type] needs [X]. What [category] tools are typically used for this?" or "A company is [doing X]. What [category] options do they typically consider?" — no preamble, different intents from the ICP prompts above.
-   All 6 must naturally invite a product or service recommendation without forcing a ranked list. Do NOT include ${inference.company_name} in any of these.
+    ? `3. "job_to_be_done" (6 prompts) — short, concise third-person questions (under 12 words each) that naturally invite a software recommendation.
+   a) One prompt per customer profile below (${icpPersonas.length} prompts): base it on their primary need. Format: "What [category] do [brief customer type] use for [primary need]?" or "Which [category] works for [customer type] who need [brief need]?" — no long scenario preambles.
+   b) ${6 - icpPersonas.length} additional prompts: short direct questions under 12 words. "What [category] do [customer type] use to [task]?" or "Which [category] tools handle [specific workflow]?" — different intents from the ICP prompts.
+   All 6 must invite a product recommendation without forcing a ranked list. Do NOT include ${inference.company_name} in any of these.
 
 Customer profiles for (a):
-${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})`).join('\n')}`
-    : `3. "job_to_be_done" (6 prompts) — a specific need or problem framed as a third-person scenario.
-   CRITICAL: use third-person framing so recommending a product or service is the natural answer.
-   Use "A company needs...", "A [customer type] is looking for...", "What [category] do [customer type] typically use to..." framing.
-   Avoid first-person "I need..." and avoid "How do I..." (invites process advice, not product recommendations).
-   Avoid forcing a ranked list — the prompt should invite a natural mention, not enumeration.
+${icpPersonas.map((p) => `- ${p.label}: need: ${p.primary_need}`).join('\n')}`
+    : `3. "job_to_be_done" (6 prompts) — short, concise third-person questions (under 12 words each) that invite a software recommendation.
+   Use "What [category] do [customer type] use to [task]?" or "Which [category] tools handle [specific workflow]?" framing.
+   Avoid first-person "I need..." phrasing and long scenario setups.
    Do NOT include ${inference.company_name} in these prompts.`
 
   const response = await getClient().messages.create({
@@ -224,12 +265,13 @@ Generate 18 prompts across three types. Return a JSON array with objects contain
 Types and counts:
 1. "discovery" (8 prompts) — prompts that measure natural brand salience (does the brand come up organically?).
    These must NOT use "best", "top", "rank", "affordable", or "alternatives to" — those force list enumeration and inflate low-salience entities.
+   Keep each under 12 words. Real users type concise queries.
    Each must have a DIFFERENT query shape:
-   - known-for: "What companies are known for [specific capability in category]?"
-   - association: "Which [category] tools are most associated with [use case or outcome]?"
-   - persona-fit: "What [category] solutions do [specific customer type] typically use?"
-   - leader: "Who are the leading [category] providers for [specific use case]?"
-   - name-players: "Name [category] firms known for [feature or customer segment]."
+   - known-for: "What companies are known for [specific capability]?"
+   - association: "Which [category] tools do [customer type] use for [outcome]?"
+   - persona-fit: "What [category] do [specific customer type] typically use?"
+   - leader: "Who are the leading [category] providers for [use case]?"
+   - name-players: "Name [category] tools known for [feature or segment]."
    - general recall: "What companies come to mind in [category]?"
    Do NOT include ${inference.company_name} in these prompts.
 
@@ -256,11 +298,15 @@ Rules:
   // Entity check probes: measure what AI models know about the brand directly
   const entityCheckProbes: GeneratedProbe[] = [
     {
-      prompt_text: `What is ${inference.company_name}? Describe what they do and who they serve.`,
+      prompt_text: `What is ${inference.company_name}?`,
       prompt_type: 'entity_check',
     },
     {
-      prompt_text: `Tell me about ${inference.company_name} — what product or service do they offer?`,
+      prompt_text: `Is ${inference.company_name} a good option for ${inference.target_customer}?`,
+      prompt_type: 'entity_check',
+    },
+    {
+      prompt_text: `Who are ${inference.company_name}'s main competitors?`,
       prompt_type: 'entity_check',
     },
   ]
@@ -278,29 +324,32 @@ Rules:
     .filter((c) => !comparisonCompetitors.has(c))
     .slice(0, 3)
     .map((competitor) => ({
-      prompt_text: `Which is better for ${inference.category}: ${inference.company_name} or ${competitor}? Recommend one.`,
+      prompt_text: `${inference.company_name} vs ${competitor} — which is better for ${inference.target_customer}?`,
       prompt_type: 'pairwise' as const,
     }))
 
-  // Fixed salience probes — no ranking or "best" to avoid enumeration pressure
+  // Fixed salience probes
   const rankingProbes: GeneratedProbe[] = [
     {
-      prompt_text: `What ${inference.category} tools are widely used by ${inference.target_customer}?`,
+      prompt_text: `What ${inference.category} do ${inference.target_customer} typically use?`,
       prompt_type: 'discovery',
-    },
-    {
-      prompt_text: `A company is evaluating ${inference.category} options. What solutions do businesses like this typically consider?`,
-      prompt_type: 'job_to_be_done',
     },
     {
       prompt_text: `Which companies are well-known in the ${inference.category} space?`,
       prompt_type: 'discovery',
     },
+    {
+      prompt_text: `What ${inference.category} do most ${inference.target_customer} consider?`,
+      prompt_type: 'discovery',
+    },
   ]
+
+  // Feature-match probes: generated from key_features extracted during site crawl
+  const featureMatchProbes = await generateFeatureMatchProbes(inference)
 
   // Assemble and deduplicate
   // Two passes: (1) exact match, (2) shared opening sentence (catches same-preamble ICP variants)
-  const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes]
+  const allProbes = [...llmProbes, ...entityCheckProbes, ...pairwiseProbes, ...rankingProbes, ...featureMatchProbes]
   const seenExact = new Set<string>()
   const seenOpening = new Set<string>()
   const deduped = allProbes.filter((p) => {
@@ -316,5 +365,5 @@ Rules:
     return true
   })
 
-  return qualityFilterProbes(deduped, inference, 20)
+  return qualityFilterProbes(deduped, inference, 24)
 }

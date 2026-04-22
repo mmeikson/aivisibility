@@ -41,6 +41,7 @@ export interface InferenceResult {
   primary_use_case: string
   target_customer: string
   competitors: string[]
+  key_features?: string[]
   confidence: Record<string, 'low' | 'medium' | 'high'>
   platform_summaries?: Record<string, string>
   icp_personas?: IcpPersona[]
