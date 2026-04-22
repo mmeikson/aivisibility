@@ -15,10 +15,23 @@ export function priorityScore(category: ScoreCategory, rawScore: number): number
   return CLOSABILITY[category] * 10000 + (100 - rawScore)
 }
 
-// Severity label for display
 export function severityLabel(score: number): string {
   if (score >= 80) return 'Healthy'
   if (score >= 60) return 'Moderate'
   if (score >= 40) return 'Weak'
   return 'Critical'
+}
+
+export function severityClass(score: number): string {
+  if (score >= 80) return 'severity-healthy'
+  if (score >= 60) return 'severity-moderate'
+  if (score >= 40) return 'severity-weak'
+  return 'severity-critical'
+}
+
+export function severityBgClass(score: number): string {
+  if (score >= 80) return 'severity-bg-healthy'
+  if (score >= 60) return 'severity-bg-moderate'
+  if (score >= 40) return 'severity-bg-weak'
+  return 'severity-bg-critical'
 }

@@ -9,7 +9,7 @@ config({ path: '.env.local' })
 
 import { crawlSite } from '../lib/crawler'
 import { inferBusinessContext, generateProbes } from '../lib/inference'
-import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from '../lib/inngest/probe-platform'
+import { probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogleDirect } from '../lib/inngest/probe-platform'
 import type { Probe, ParsedProbeResult } from '../lib/db/types'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -73,10 +73,10 @@ async function main() {
     console.log(`4. Running ${platformProbes.length} probes on ${plt}...`)
     const start = Date.now()
 
-    if (plt === 'openai') await probeOpenAI(platformProbes, onResult)
+    if (plt === 'openai') await probeOpenAIDirect(platformProbes, onResult)
     else if (plt === 'anthropic') await probeAnthropic(platformProbes, onResult)
     else if (plt === 'perplexity') await probePerplexity(platformProbes, onResult)
-    else if (plt === 'google') await probeGoogle(platformProbes, onResult)
+    else if (plt === 'google') await probeGoogleDirect(platformProbes, onResult)
 
     const completed = [...store.values()].filter((p) => p.platform === plt && p.status === 'complete')
     console.log(`   ${completed.length}/${platformProbes.length} succeeded in ${((Date.now() - start) / 1000).toFixed(1)}s\n`)

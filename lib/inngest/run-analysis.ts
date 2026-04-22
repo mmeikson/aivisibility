@@ -21,7 +21,7 @@ function startCancellationWatch(reportId: string): { signal: AbortSignal; stop: 
 }
 import { crawlSite } from '@/lib/crawler'
 import { inferBusinessContext, generateProbes, generateIcpPersonas } from '@/lib/inference'
-import { probeOpenAI, probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
+import { probeOpenAIDirect, probeAnthropic, probePerplexity, probeGoogleDirect, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -138,75 +138,24 @@ export const runAnalysis = inngest.createFunction(
     })
 
     // Step 5: Run all 4 platforms in parallel
-    // ChatGPT and Gemini use BD webhooks when BRIGHTDATA_WEBHOOK_URL is set (production).
-    // Without it they fall back to polling (local dev).
-    const webhookBase = process.env.BRIGHTDATA_WEBHOOK_URL
-
     await Promise.all([
 
-      // ---- ChatGPT ----
-      (async () => {
-        if (process.env.CHATGPT_PROVIDER === 'api') {
-          await step.run('probe-openai', async () => {
-            const probes = await getProbesByPlatform(reportId, 'openai')
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              let done = 0
-              await probeOpenAIDirect(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
-            } finally { stop() }
-          })
-        } else if (webhookBase) {
-          // Webhook mode: fire-and-forget to BD, wait for callback event
-          await step.run('probe-openai-submit', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
-            if (probes.length === 0) return
-            await submitOpenAIProbes(probes, webhookBase, reportId)
-            const total = (await getProbesByPlatform(reportId, 'openai')).length
-            await emitEvent(reportId, 'probe_progress', `ChatGPT: 0 of ${total} responses received`)
-          })
-          await step.waitForEvent('probe-openai-wait', {
-            event: 'probes/openai-complete',
-            timeout: '15m',
-            match: 'data.reportId',
-          })
-          await step.run('probe-openai-done', async () => {
-            const probes = await getProbesByPlatform(reportId, 'openai')
-            // Mark any still-pending probes as failed (webhook timeout)
-            await Promise.all(
-              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
-            )
-            const done = probes.filter(p => p.status === 'complete').length
-            const total = probes.length
-            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
-            console.log(`[ChatGPT] ${done}/${total} complete`)
-          })
-        } else {
-          // Polling fallback (local dev — no public webhook URL)
-          await step.run('probe-openai', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
-            const total = (await getProbesByPlatform(reportId, 'openai')).length
-            let done = total - probes.length
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              await probeOpenAI(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
-            } finally { stop() }
-          })
-        }
-      })(),
+      // ---- ChatGPT (gpt-5.4 direct API) ----
+      step.run('probe-openai', async () => {
+        const probes = await getProbesByPlatform(reportId, 'openai')
+        const { signal, stop } = startCancellationWatch(reportId)
+        try {
+          let done = 0
+          await probeOpenAIDirect(probes, async (id, u) => {
+            await updateProbe(id, u)
+            if (u.status === 'complete' || u.status === 'failed') {
+              done++
+              await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+            }
+          }, signal)
+          await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+        } finally { stop() }
+      }),
 
       // ---- Anthropic ----
       step.run('probe-anthropic', async () => {
@@ -227,7 +176,7 @@ export const runAnalysis = inngest.createFunction(
 
       // ---- Perplexity ----
       step.run('probe-perplexity', async () => {
-        if (!process.env.PERPLEXITY_API_KEY && !process.env.BRIGHTDATA_API_KEY) {
+        if (!process.env.PERPLEXITY_API_KEY) {
           await emitEvent(reportId, 'probe_batch_done', 'Perplexity: skipped (no API key)')
           return
         }
@@ -246,68 +195,22 @@ export const runAnalysis = inngest.createFunction(
         } finally { stop() }
       }),
 
-      // ---- Gemini ----
-      (async () => {
-        if (process.env.GEMINI_PROVIDER === 'api') {
-          await step.run('probe-google', async () => {
-            const probes = await getProbesByPlatform(reportId, 'google')
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              let done = 0
-              await probeGoogleDirect(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
-            } finally { stop() }
-          })
-        } else if (webhookBase) {
-          // Webhook mode
-          await step.run('probe-google-submit', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
-            if (probes.length === 0) return
-            await submitGoogleProbes(probes, webhookBase, reportId)
-            const total = (await getProbesByPlatform(reportId, 'google')).length
-            await emitEvent(reportId, 'probe_progress', `Gemini: 0 of ${total} responses received`)
-          })
-          await step.waitForEvent('probe-google-wait', {
-            event: 'probes/google-complete',
-            timeout: '15m',
-            match: 'data.reportId',
-          })
-          await step.run('probe-google-done', async () => {
-            const probes = await getProbesByPlatform(reportId, 'google')
-            await Promise.all(
-              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
-            )
-            const done = probes.filter(p => p.status === 'complete').length
-            const total = probes.length
-            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
-            console.log(`[Gemini] ${done}/${total} complete`)
-          })
-        } else {
-          // Polling fallback (local dev)
-          await step.run('probe-google', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
-            const total = (await getProbesByPlatform(reportId, 'google')).length
-            let done = total - probes.length
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              await probeGoogle(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
-            } finally { stop() }
-          })
-        }
-      })(),
+      // ---- Gemini (gemini-2.5-flash direct API with googleSearch grounding) ----
+      step.run('probe-google', async () => {
+        const probes = await getProbesByPlatform(reportId, 'google')
+        const { signal, stop } = startCancellationWatch(reportId)
+        try {
+          let done = 0
+          await probeGoogleDirect(probes, async (id, u) => {
+            await updateProbe(id, u)
+            if (u.status === 'complete' || u.status === 'failed') {
+              done++
+              await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+            }
+          }, signal)
+          await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+        } finally { stop() }
+      }),
 
     ])
 
@@ -333,14 +236,11 @@ export const runAnalysis = inngest.createFunction(
         if (u.status === 'complete') retryResults[id] = 1
       }
 
-      // BD platforms (openai, google) are retried via the pending-filter mechanism
-      // in their own steps — retrying them here would cause duplicate BD sessions.
-      // When using direct API providers, retry them here like anthropic/perplexity.
       await Promise.allSettled([
         byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
         byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
-        byPlatform['openai']     && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
-        byPlatform['google']     && process.env.GEMINI_PROVIDER === 'api'  && probeGoogleDirect(byPlatform['google'], onResult),
+        byPlatform['openai']     && probeOpenAIDirect(byPlatform['openai'], onResult),
+        byPlatform['google']     && probeGoogleDirect(byPlatform['google'], onResult),
       ].filter(Boolean))
 
       const recovered = Object.keys(retryResults).length

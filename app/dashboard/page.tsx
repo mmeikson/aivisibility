@@ -6,6 +6,8 @@ import { getUser } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/db/client'
 import SignOutButton from './sign-out-button'
 import type { Report } from '@/lib/db/types'
+import { severityLabel, severityClass } from '@/lib/scoring/priority'
+import { SCORE_WEIGHTS } from '@/lib/constants'
 
 function formatDuration(createdAt: string, completedAt: string | null): string {
   if (!completedAt) return '—'
@@ -26,13 +28,6 @@ async function getUserReports(userId: string): Promise<(Report & { avg_score: nu
 
   if (!data) return []
 
-  const SCORE_WEIGHTS: Record<string, number> = {
-    category_association: 0.50,
-    social_proof: 0.20,
-    retrieval: 0.20,
-    entity: 0.10,
-  }
-
   return data.map((r) => {
     const scores = (r.scores as { raw_score: number; category: string }[]) ?? []
     const avg = scores.length > 0
@@ -40,20 +35,6 @@ async function getUserReports(userId: string): Promise<(Report & { avg_score: nu
       : null
     return { ...r, avg_score: avg }
   })
-}
-
-function severityClass(score: number): string {
-  if (score >= 80) return 'severity-healthy'
-  if (score >= 60) return 'severity-moderate'
-  if (score >= 40) return 'severity-weak'
-  return 'severity-critical'
-}
-
-function severityLabel(score: number): string {
-  if (score >= 80) return 'Healthy'
-  if (score >= 60) return 'Moderate'
-  if (score >= 40) return 'Weak'
-  return 'Critical'
 }
 
 export default async function DashboardPage() {

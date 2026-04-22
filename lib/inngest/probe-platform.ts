@@ -24,8 +24,6 @@ function timeout(ms: number, label: string): Promise<never> {
   )
 }
 
-// Limits concurrent async tasks to `limit` at a time, with an optional stagger
-// delay between each launch to avoid thundering-herd on BD browser sessions.
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
@@ -35,7 +33,6 @@ async function runWithConcurrency<T>(
 ): Promise<void> {
   const queue = [...items.entries()]
   const workers = Array.from({ length: Math.min(limit, items.length) }, async (_, workerIndex) => {
-    // Stagger worker start times
     await sleep(workerIndex * staggerMs)
     while (queue.length > 0) {
       if (signal?.aborted) break
@@ -63,116 +60,8 @@ function abortableRequest<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   })
 }
 
-// ---- Bright Data shared scraper ----
-// Submits prompts to real AI web interfaces via browser automation.
-// Concurrency is intentionally limited — running too many sessions simultaneously
-// causes BD to return empty responses.
-
-const BD_CHATGPT_ID = 'gd_m7aof0k82r803d5bjm'
-const BD_GEMINI_ID  = 'gd_mbz66arm2mf9cu856y'
-
-const BD_POLL_INTERVAL_MS = 2_000
-const BD_MAX_POLLS = 90 // 3 min max per probe
-
-async function brightDataScrape(
-  datasetId: string,
-  body: unknown,
-  apiKey: string,
-  signal?: AbortSignal
-): Promise<{ text: string; citations: string[] }> {
-  const res = await fetch(
-    `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${datasetId}&format=json`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    }
-  )
-
-  const data = await res.json()
-  const first = Array.isArray(data) ? data[0] : data
-
-  // Prefer markdown for richer display; fall back to plain text
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function bdText(obj: any): string {
-    return obj?.answer_text_markdown?.trim() || obj?.answer_text?.trim() || ''
-  }
-
-  console.log(`[BD] dataset=${datasetId} status=${res.status} answer_text_len=${first?.answer_text?.length ?? 'n/a'}`)
-
-  if (res.ok && bdText(first)) {
-    return {
-      text: bdText(first),
-      citations: (first.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
-    }
-  }
-
-  // Async — poll snapshot
-  const snapshotId: string = first?.snapshot_id
-  if (!snapshotId) throw new Error(`Unexpected BD response: ${JSON.stringify(first).slice(0, 200)}`)
-
-  for (let i = 0; i < BD_MAX_POLLS; i++) {
-    await sleep(BD_POLL_INTERVAL_MS)
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    const poll = await fetch(
-      `https://api.brightdata.com/datasets/v3/snapshot/${snapshotId}?format=json`,
-      { headers: { Authorization: `Bearer ${apiKey}` }, signal }
-    )
-    if (poll.status === 202) continue
-    const pollData = await poll.json()
-    const result = Array.isArray(pollData) ? pollData[0] : pollData
-    console.log(`[BD] snapshot=${snapshotId} poll_status=${poll.status} answer_text_len=${result?.answer_text?.length ?? 'n/a'}`)
-    const text = bdText(result)
-    if (!text) throw new Error(`BD snapshot ${snapshotId} returned empty response`)
-    return {
-      text,
-      citations: (result.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
-    }
-  }
-
-  throw new Error(`BD snapshot ${snapshotId} timed out`)
-}
-
-// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// BD can only sustain 1 concurrent session reliably — multiple simultaneous
-// sessions cause the extras to return empty. Probes run strictly sequentially.
-// Inngest will retry the step if it times out; already-completed probes are
-// filtered out before calling these functions so retries make forward progress.
-
-const BD_CONCURRENCY = 2
-const BD_STAGGER_MS  = 8_000
-const BD_TIMEOUT_MS  = 90_000
-
-export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
-
-  console.log(`[ChatGPT] BD concurrency=${BD_CONCURRENCY} stagger=${BD_STAGGER_MS}ms probes=${probes.length}`)
-
-  await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
-    const start = Date.now()
-    try {
-      const { text, citations } = await Promise.race([
-        brightDataScrape(
-          BD_CHATGPT_ID,
-          [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-          bdKey,
-          signal
-        ),
-        timeout(BD_TIMEOUT_MS, `ChatGPT probe ${probe.id}`),
-      ])
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.warn(`[ChatGPT] probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
-    }
-  }, signal)
-}
-
-// ---- Anthropic (claude-sonnet-4-6, no web search) ----
-// Tests parametric knowledge from training data — what Claude "knows" about a brand.
+// ---- Anthropic (claude-sonnet-4-6 with web_search tool) ----
+// Tests retrieval + parametric knowledge — what Claude "knows" about a brand.
 
 const ANTHROPIC_CONCURRENCY = 5
 const ANTHROPIC_STAGGER_MS  = 500
@@ -310,8 +199,7 @@ Today's date is ${date}. The user is located in the United States.` },
   }))
 }
 
-// ---- Google direct API (gemini-2.0-flash with googleSearchRetrieval grounding) ----
-// Uses gemini-2.5-flash with googleSearch grounding.
+// ---- Google direct API (gemini-2.5-flash with googleSearch grounding) ----
 // @google/generative-ai 0.24.1 types don't include googleSearch yet — cast to any.
 // Grounding redirect URLs are resolved to real URLs via HEAD request.
 
@@ -319,9 +207,9 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
   const apiKey = process.env.GOOGLE_AI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_AI_API_KEY is not set')
   const client = new GoogleGenerativeAI(apiKey)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const model = client.getGenerativeModel({
     model: 'gemini-2.5-flash',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tools: [{ googleSearch: {} } as any],
   })
   const date = new Date().toISOString().slice(0, 10)
@@ -331,8 +219,7 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
     const start = Date.now()
     try {
       // @google/generative-ai doesn't accept AbortSignal — wrap with abortableRequest.
-      // Also race against a hard 90s timeout so a hung/rate-limited request fails
-      // cleanly instead of blocking the Promise.all forever.
+      // Race against a hard 90s timeout so a hung/rate-limited request fails cleanly.
       const result = await Promise.race([
         abortableRequest(
           model.generateContent({
@@ -348,6 +235,7 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
       if (!text.trim()) throw new Error('Empty response')
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawUrls: string[] = (result.response.candidates?.[0]?.groundingMetadata as any)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ?.groundingChunks?.map((c: any) => c.web?.uri ?? '').filter(Boolean) ?? []
       const citations = await Promise.all(
         rawUrls.map(async (url) => {
@@ -368,100 +256,4 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
       await onResult(probe.id, { status: 'failed' })
     }
   }))
-}
-
-// ---- Bright Data webhook-based submission ----
-// Submits all probes to BD simultaneously with a callback URL.
-// BD processes them asynchronously and POSTs results to our webhook endpoint.
-// No polling, no timeouts — Inngest step.waitForEvent handles the wait.
-
-async function triggerBD(
-  datasetId: string,
-  body: unknown,
-  webhookUrl: string,
-  apiKey: string,
-  label: string,
-): Promise<void> {
-  const res = await fetch(
-    `https://api.brightdata.com/datasets/v3/trigger?dataset_id=${datasetId}&format=json&notify=true&endpoint=${encodeURIComponent(webhookUrl)}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }
-  )
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`BD trigger failed for ${label}: ${res.status} ${text}`)
-  }
-}
-
-export async function submitOpenAIProbes(
-  probes: Probe[],
-  webhookBase: string,
-  reportId: string,
-): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
-  console.log(`[ChatGPT] submitting ${probes.length} probes via BD webhook`)
-  for (const probe of probes) {
-    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=openai`
-    await triggerBD(
-      BD_CHATGPT_ID,
-      [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-      endpoint,
-      bdKey,
-      `ChatGPT probe ${probe.id}`,
-    )
-  }
-}
-
-export async function submitGoogleProbes(
-  probes: Probe[],
-  webhookBase: string,
-  reportId: string,
-): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
-  console.log(`[Gemini] submitting ${probes.length} probes via BD webhook`)
-  for (const probe of probes) {
-    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=google`
-    await triggerBD(
-      BD_GEMINI_ID,
-      { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-      endpoint,
-      bdKey,
-      `Gemini probe ${probe.id}`,
-    )
-  }
-}
-
-// ---- Google via Bright Data (real Gemini browser session) ----
-// Same concurrency/stagger/timeout strategy as ChatGPT.
-
-export async function probeGoogle(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for Gemini probes')
-
-  console.log(`[Gemini] BD concurrency=${BD_CONCURRENCY} stagger=${BD_STAGGER_MS}ms probes=${probes.length}`)
-
-  await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
-    const start = Date.now()
-    try {
-      const { text, citations } = await Promise.race([
-        brightDataScrape(
-          BD_GEMINI_ID,
-          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-          bdKey,
-          signal
-        ),
-        timeout(BD_TIMEOUT_MS, `Gemini probe ${probe.id}`),
-      ])
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.warn(`[Gemini] probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
-    }
-  }, signal)
 }

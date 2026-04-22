@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { Score, InferenceResult, ScoreCategory } from '@/lib/db/types'
 import { severityLabel } from './scoring/priority'
+import { getAnthropicClient } from './anthropic-client'
 
 const EFFORT: Record<ScoreCategory, string> = {
   entity: '1–3 days',
@@ -14,10 +14,6 @@ const PLATFORMS: Record<ScoreCategory, string[]> = {
   category_association: ['openai', 'anthropic'],
   retrieval: ['perplexity', 'google'],
   social_proof: ['openai', 'anthropic', 'perplexity', 'google'],
-}
-
-function getClient() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 }
 
 interface Recommendation {
@@ -35,7 +31,7 @@ export async function generateRecommendations(
   score: Score,
   inference: InferenceResult
 ): Promise<Recommendation[]> {
-  const client = getClient()
+  const client = getAnthropicClient()
   const category = score.category as ScoreCategory
   const components = score.component_scores_json
   const severity = severityLabel(score.raw_score)

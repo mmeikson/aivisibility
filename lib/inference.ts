@@ -1,10 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { CrawledSite } from './crawler'
 import type { InferenceResult, IcpPersona } from './db/types'
-
-function getClient() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-}
+import { getAnthropicClient } from './anthropic-client'
 
 export interface GeneratedProbe {
   prompt_text: string
@@ -32,7 +28,7 @@ export async function inferBusinessContext(site: CrawledSite): Promise<Inference
     return ''
   })()
 
-  const response = await getClient().messages.create({
+  const response = await getAnthropicClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     temperature: 0,
@@ -78,7 +74,7 @@ ${pageContent}`,
   } catch {
     console.error('[inferBusinessContext] JSON parse failed, retrying once:', jsonStr.slice(0, 200))
     // Retry once with an explicit JSON reminder
-    const retry = await getClient().messages.create({
+    const retry = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       messages: [
@@ -94,7 +90,7 @@ ${pageContent}`,
 // ---- ICP generation ----
 
 export async function generateIcpPersonas(inference: InferenceResult): Promise<IcpPersona[]> {
-  const res = await getClient().messages.create({
+  const res = await getAnthropicClient().messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 512,
     temperature: 0,
@@ -145,7 +141,7 @@ async function qualityFilterProbes(
   const input = variable.map((p, i) => ({ index: i, prompt_text: p.prompt_text, prompt_type: p.prompt_type }))
 
   try {
-    const res = await getClient().messages.create({
+    const res = await getAnthropicClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       temperature: 0,
@@ -203,7 +199,7 @@ ${icpPersonas.map((p) => `- ${p.label}: "${p.context}" (need: ${p.primary_need})
    Avoid forcing a ranked list — the prompt should invite a natural mention, not enumeration.
    Do NOT include ${inference.company_name} in these prompts.`
 
-  const response = await getClient().messages.create({
+  const response = await getAnthropicClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     temperature: 0,

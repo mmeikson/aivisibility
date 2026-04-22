@@ -1,12 +1,8 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { updateProbe } from '@/lib/db/queries'
 import type { Probe, ParsedProbeResult, InferenceResult } from '@/lib/db/types'
+import { getAnthropicClient } from './anthropic-client'
 
 const BATCH_SIZE = 5
-
-function getClient() {
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-}
 
 function extractDomains(urls: string[]): string[] {
   return urls.flatMap((url) => {
@@ -23,7 +19,7 @@ async function parseBatch(
   inference: InferenceResult,
   reportUrl: string
 ): Promise<Map<string, ParsedProbeResult>> {
-  const client = getClient()
+  const client = getAnthropicClient()
 
   const input = probes.map((p, i) => ({
     index: i,

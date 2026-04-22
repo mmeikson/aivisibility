@@ -3,26 +3,14 @@ import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { RecommendationCard } from '@/components/recommendation-card'
 import type { ScoreCategory } from '@/lib/db/types'
+import { severityLabel, severityClass } from '@/lib/scoring/priority'
+import { CATEGORY_LABELS, CATEGORY_DESCRIPTIONS, COMPONENT_MAX } from '@/lib/constants'
 
 interface Props {
   params: Promise<{ id: string; category: string }>
 }
 
 const VALID_CATEGORIES: ScoreCategory[] = ['category_association', 'retrieval', 'entity', 'social_proof']
-
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  category_association: 'Category Association',
-  retrieval: 'Source Retrieval',
-  entity: 'Entity Recognition',
-  social_proof: 'Social Proof',
-}
-
-const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
-  category_association: 'Whether AI models associate your brand with your product category and recommend you in discovery queries.',
-  retrieval: 'Whether AI models with web access cite your website as a source in responses.',
-  entity: 'How well AI models understand and represent your entity — schema markup, profile completeness, and description consistency.',
-  social_proof: 'The volume and quality of third-party social proof signals that AI models use to validate your authority.',
-}
 
 const COMPONENT_LABELS: Record<string, string> = {
   // category_association
@@ -58,55 +46,7 @@ const COMPONENT_LABELS: Record<string, string> = {
   listicle_appearances: 'Listicle appearances',
 }
 
-const COMPONENT_MAX: Record<string, number> = {
-  // category_association (total 100)
-  discovery_mention_rate: 40,
-  avg_mention_position: 20,
-  competitor_gap: 20,
-  cross_platform_consistency: 20,
-  // retrieval (total 100)
-  mention_rate: 30,
-  direct_url_citation: 30,
-  roundup_presence: 20,
-  content_format: 20,
-  // entity (total 100)
-  schema_markup: 20,
-  description_specificity: 10,
-  profile_completeness: 20,
-  wikipedia: 10,
-  description_consistency: 40,
-  // social_proof — saas (total 100)
-  g2_presence: 25,
-  capterra_presence: 15,
-  product_hunt: 15,
-  // social_proof — consumer (total 100)
-  amazon_reviews: 30,
-  trustpilot_presence: 20,
-  youtube_reviews: 5,
-  // social_proof — health_wellness (total 100)
-  editorial_mentions: 10,
-  // social_proof — fintech (total 100)
-  app_reviews: 10,
-  // social_proof — shared
-  reddit_mentions: 20,
-  listicle_appearances: 25,
-}
-
 const EFFORT_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 }
-
-function severityLabel(score: number): string {
-  if (score >= 80) return 'Healthy'
-  if (score >= 60) return 'Moderate'
-  if (score >= 40) return 'Weak'
-  return 'Critical'
-}
-
-function severityClass(score: number): string {
-  if (score >= 80) return 'severity-healthy'
-  if (score >= 60) return 'severity-moderate'
-  if (score >= 40) return 'severity-weak'
-  return 'severity-critical'
-}
 
 export default async function CategoryPage({ params }: Props) {
   const { id, category } = await params

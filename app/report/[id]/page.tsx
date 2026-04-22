@@ -7,23 +7,11 @@ import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competito
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
 import type { Score, Recommendation, ScoreCategory } from '@/lib/db/types'
+import { severityLabel, severityClass, severityBgClass } from '@/lib/scoring/priority'
+import { CATEGORY_LABELS, CATEGORY_DESCRIPTIONS, SCORE_WEIGHTS, COMPONENT_MAX } from '@/lib/constants'
 
 interface Props {
   params: Promise<{ id: string }>
-}
-
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  category_association: 'Category Association',
-  retrieval: 'Source Retrieval',
-  entity: 'Entity Recognition',
-  social_proof: 'Social Proof',
-}
-
-const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
-  category_association: 'Whether AI models associate your brand with your product category and recommend you in discovery queries.',
-  retrieval: 'Whether AI models with web search retrieve and cite your website when answering relevant queries.',
-  entity: 'Whether AI models correctly identify your brand as a distinct entity and avoid confusing it with others.',
-  social_proof: 'Whether third-party reviews, mentions, and endorsements reinforce your brand in AI training data.',
 }
 
 function buildSummary(
@@ -79,19 +67,6 @@ function buildSummary(
     app_reviews: 'building your app store review presence',
   }
 
-  // Find the component with the worst score relative to its max (using COMPONENT_MAX from the category page)
-  const COMPONENT_MAX: Record<string, number> = {
-    mention_rate: 30, discovery_mention_rate: 40, position: 20, avg_mention_position: 20,
-    competitor_gap: 20, cross_platform: 20, cross_platform_consistency: 20,
-    roundup_presence: 30, citation_rate: 10, direct_url_citation: 30,
-    schema_markup: 20, wikipedia: 10, profile_completeness: 20,
-    description_consistency: 40, description_specificity: 10,
-    g2_presence: 25, capterra_presence: 15, product_hunt: 15,
-    amazon_reviews: 30, trustpilot_presence: 20, reddit_mentions: 20,
-    listicle_appearances: 25, editorial_mentions: 10, youtube_reviews: 5,
-    app_reviews: 10,
-  }
-
   let worstKey = ''
   let worstGap = -1
   for (const score of scores) {
@@ -120,27 +95,6 @@ function faviconUrl(domain: string): string {
 
 function guessCompetitorDomain(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
-}
-
-function severityLabel(score: number): string {
-  if (score >= 80) return 'Healthy'
-  if (score >= 60) return 'Moderate'
-  if (score >= 40) return 'Weak'
-  return 'Critical'
-}
-
-function severityClass(score: number): string {
-  if (score >= 80) return 'severity-healthy'
-  if (score >= 60) return 'severity-moderate'
-  if (score >= 40) return 'severity-weak'
-  return 'severity-critical'
-}
-
-function severityBgClass(score: number): string {
-  if (score >= 80) return 'severity-bg-healthy'
-  if (score >= 60) return 'severity-bg-moderate'
-  if (score >= 40) return 'severity-bg-weak'
-  return 'severity-bg-critical'
 }
 
 export default async function ReportPage({ params }: Props) {
@@ -182,14 +136,6 @@ export default async function ReportPage({ params }: Props) {
   const isOwner = user && report.user_id === user.id
   const showSaveBanner = !isSaved
 
-  // Overall score: weighted — category_association dominates since it directly measures
-  // whether customers encounter the brand in ChatGPT/Claude responses
-  const SCORE_WEIGHTS: Record<string, number> = {
-    category_association: 0.50,
-    social_proof: 0.20,
-    retrieval: 0.20,
-    entity: 0.10,
-  }
   const overallScore = scores.length > 0
     ? Math.round(scores.reduce((sum, s) => {
         const w = SCORE_WEIGHTS[s.category] ?? 0.25
