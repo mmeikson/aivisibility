@@ -9,6 +9,7 @@ const PLATFORM_LABELS: Record<string, string> = {
   anthropic: 'Claude',
   perplexity: 'Perplexity',
   google: 'Gemini',
+  openai_search: 'ChatGPT Search',
 }
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -16,6 +17,7 @@ const PLATFORM_ICONS: Record<string, string> = {
   anthropic: '/logos/claude-color.svg',
   perplexity: '/logos/Perplexity--Streamline-Simple-Icons.svg',
   google: '/logos/gemini-color.svg',
+  openai_search: '/logos/ChatGPT-Logo.svg',
 }
 
 const ENGINE_USERS: Record<string, string> = {
@@ -92,7 +94,7 @@ function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () 
 export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: Props) {
   const [selected, setSelected] = useState<Probe | null>(null)
 
-  const platforms = ['openai', 'anthropic', 'perplexity', 'google'] as const
+  const platforms = ['openai', 'anthropic', 'perplexity', 'google', 'openai_search'] as const
   const activePlatforms = platforms.filter((p) => probes.some((r) => r.platform === p))
 
   const { prompts, matrix } = buildMatrix(probes, activePlatforms)
