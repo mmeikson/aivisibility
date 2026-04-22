@@ -180,7 +180,7 @@ export default async function ReportPage({ params }: Props) {
     getUser(),
   ])
 
-  const sourceGapResult = computeSourceGaps(probes)
+  const sourceGapResult = computeSourceGaps(probes, report.competitors ?? [])
 
   const isSaved = !!report.user_id
   const isOwner = user && report.user_id === user.id

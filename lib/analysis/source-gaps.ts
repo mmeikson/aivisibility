@@ -16,16 +16,18 @@ export interface DomainEntry {
   brandMentionedCount: number
   competitorsMentioned: string[]
   isGap: boolean
-  platformCount: number       // how many distinct platforms cite this domain in this cluster
-  platformNames: string[]     // e.g. ['perplexity', 'google', 'openai_search']
+  isCompetitorOwned: boolean  // domain belongs to a known competitor — not actionable for listing
+  sampleUrls: string[]        // up to 5 actual cited URLs for this domain in this cluster
+  platformCount: number
+  platformNames: string[]
   isHighConfidence: boolean   // platformCount >= 2
 }
 
 export type DeltaClass = 'durable' | 'web_only' | 'parametric_only' | 'absent'
 
 export interface ClusterDelta {
-  parametricMentionRate: number  // was_mentioned rate for 'openai' probes in cluster
-  webMentionRate: number         // was_mentioned rate for 'openai_search' probes in cluster
+  parametricMentionRate: number
+  webMentionRate: number
   deltaClass: DeltaClass
   parametricCount: number
   webCount: number
@@ -37,7 +39,7 @@ export interface ClusterAnalysis {
   domains: DomainEntry[]
   hasData: boolean
   gapCount: number
-  delta: ClusterDelta | null   // null if either platform has no probes in this cluster
+  delta: ClusterDelta | null
 }
 
 export interface SourceGapResult {
@@ -58,7 +60,17 @@ function classifyDelta(parametric: number, web: number): DeltaClass {
   return 'durable'
 }
 
-export function computeSourceGaps(probes: Probe[]): SourceGapResult {
+// Returns true if a domain appears to be owned by a known competitor.
+// Strips TLD and common prefixes, then checks for substring overlap.
+function detectCompetitorDomain(domain: string, competitors: string[]): boolean {
+  const base = domain.toLowerCase().replace(/^www\./, '').replace(/\.[a-z]{2,}$/, '')
+  return competitors.some((c) => {
+    const name = c.toLowerCase().replace(/[^a-z0-9]/g, '')
+    return base.includes(name) || name.includes(base)
+  })
+}
+
+export function computeSourceGaps(probes: Probe[], competitors: string[] = []): SourceGapResult {
   const eligibleProbes = probes.filter(
     (p) => p.parsed_json !== null && (p.parsed_json.cited_domains?.length ?? 0) > 0
   )
@@ -69,7 +81,6 @@ export function computeSourceGaps(probes: Probe[]): SourceGapResult {
     )
 
     // Delta: compare openai (parametric) vs openai_search (web) mention rates
-    // Uses all probes in this cluster regardless of citations
     const allClusterProbes = probes.filter((p) =>
       (cluster.promptTypes as string[]).includes(p.prompt_type) && p.parsed_json !== null
     )
@@ -77,35 +88,46 @@ export function computeSourceGaps(probes: Probe[]): SourceGapResult {
     const webProbes = allClusterProbes.filter((p) => p.platform === 'openai_search')
     const delta: ClusterDelta | null =
       parametricProbes.length > 0 && webProbes.length > 0
-        ? {
-            parametricCount: parametricProbes.length,
-            webCount: webProbes.length,
-            parametricMentionRate: parametricProbes.filter((p) => p.parsed_json!.was_mentioned).length / parametricProbes.length,
-            webMentionRate: webProbes.filter((p) => p.parsed_json!.was_mentioned).length / webProbes.length,
-            deltaClass: classifyDelta(
-              parametricProbes.filter((p) => p.parsed_json!.was_mentioned).length / parametricProbes.length,
-              webProbes.filter((p) => p.parsed_json!.was_mentioned).length / webProbes.length
-            ),
-          }
+        ? (() => {
+            const pr = parametricProbes.filter((p) => p.parsed_json!.was_mentioned).length / parametricProbes.length
+            const wr = webProbes.filter((p) => p.parsed_json!.was_mentioned).length / webProbes.length
+            return {
+              parametricCount: parametricProbes.length,
+              webCount: webProbes.length,
+              parametricMentionRate: pr,
+              webMentionRate: wr,
+              deltaClass: classifyDelta(pr, wr),
+            }
+          })()
         : null
 
     if (clusterProbes.length === 0) {
       return { cluster, totalProbes: 0, domains: [], hasData: false, gapCount: 0, delta }
     }
 
-    // Map<domain, { probeIds, platformNames, brandCount, competitorCasing }>
     const domainMap = new Map<string, {
       probeIds: Set<string>
       platformNames: Set<string>
       brandCount: number
       competitorCasing: Map<string, string>
+      urlSet: Set<string>
     }>()
 
     for (const probe of clusterProbes) {
       const domains = new Set(probe.parsed_json!.cited_domains)
+      // Build a domain→urls lookup from cited_urls for this probe
+      const urlsByDomain = new Map<string, string[]>()
+      for (const url of probe.parsed_json!.cited_urls ?? []) {
+        try {
+          const d = new URL(url).hostname.replace(/^www\./, '')
+          if (!urlsByDomain.has(d)) urlsByDomain.set(d, [])
+          urlsByDomain.get(d)!.push(url)
+        } catch { /* ignore malformed URLs */ }
+      }
+
       for (const domain of domains) {
         if (!domainMap.has(domain)) {
-          domainMap.set(domain, { probeIds: new Set(), platformNames: new Set(), brandCount: 0, competitorCasing: new Map() })
+          domainMap.set(domain, { probeIds: new Set(), platformNames: new Set(), brandCount: 0, competitorCasing: new Map(), urlSet: new Set() })
         }
         const entry = domainMap.get(domain)!
         entry.probeIds.add(probe.id)
@@ -117,6 +139,9 @@ export function computeSourceGaps(probes: Probe[]): SourceGapResult {
             entry.competitorCasing.set(key, comp.trim())
           }
         }
+        for (const url of urlsByDomain.get(domain) ?? []) {
+          entry.urlSet.add(url)
+        }
       }
     }
 
@@ -127,7 +152,9 @@ export function computeSourceGaps(probes: Probe[]): SourceGapResult {
       const competitorsMentioned = Array.from(acc.competitorCasing.values())
       const platformNames = Array.from(acc.platformNames)
       const platformCount = platformNames.length
+      const isCompetitorOwned = detectCompetitorDomain(domain, competitors)
       const isGap =
+        !isCompetitorOwned &&
         citedInProbeCount >= 2 &&
         competitorsMentioned.length > 0 &&
         acc.brandCount === 0
@@ -139,6 +166,8 @@ export function computeSourceGaps(probes: Probe[]): SourceGapResult {
         brandMentionedCount: acc.brandCount,
         competitorsMentioned,
         isGap,
+        isCompetitorOwned,
+        sampleUrls: Array.from(acc.urlSet).slice(0, 5),
         platformCount,
         platformNames,
         isHighConfidence: platformCount >= 2,

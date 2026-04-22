@@ -142,7 +142,7 @@ function DomainRow({ entry, companyName }: { entry: DomainEntry; companyName: st
   return (
     <div
       className={[
-        'flex items-center gap-3 px-4 py-2.5 text-xs',
+        'px-4 py-2.5 text-xs',
         entry.isGap && entry.isHighConfidence
           ? 'border-l-2 border-l-[#CEAC01] bg-[#FFFDF0] pl-3'
           : entry.isGap
@@ -150,69 +150,100 @@ function DomainRow({ entry, companyName }: { entry: DomainEntry; companyName: st
           : '',
       ].join(' ')}
     >
-      {/* Favicon */}
-      <div className="w-4 h-4 shrink-0 flex items-center justify-center">
-        <Image
-          src={`https://www.google.com/s2/favicons?domain=${entry.domain}&sz=16`}
-          alt=""
-          width={16}
-          height={16}
-          className="rounded-sm"
-          unoptimized
-        />
-      </div>
+      <div className="flex items-center gap-3">
+        {/* Favicon */}
+        <div className="w-4 h-4 shrink-0 flex items-center justify-center">
+          <Image
+            src={`https://www.google.com/s2/favicons?domain=${entry.domain}&sz=16`}
+            alt=""
+            width={16}
+            height={16}
+            className="rounded-sm"
+            unoptimized
+          />
+        </div>
 
-      {/* Domain name */}
-      <span className="font-mono text-[11px] text-[#1A1A1A] truncate w-36 shrink-0">
-        {entry.domain}
-      </span>
-
-      {/* Citation frequency bar */}
-      <div className="w-16 shrink-0 h-1.5 bg-[#E5E2DC] rounded-full overflow-hidden">
-        <div
-          className="h-full bg-[#B8B4AD] rounded-full"
-          style={{ width: `${Math.round(entry.citationRate * 100)}%` }}
-        />
-      </div>
-      <span className="text-[10px] text-[#6C6C6C] font-mono shrink-0 w-12">
-        {entry.citedInProbeCount}/{entry.totalProbesInCluster}
-      </span>
-
-      {/* Platform agreement dots */}
-      <PlatformDots platformCount={entry.platformCount} />
-
-      {/* Brand presence */}
-      <div className="flex items-center gap-1 shrink-0 w-24">
-        <span
-          className={[
-            'w-1.5 h-1.5 rounded-full shrink-0',
-            entry.brandMentionedCount > 0 ? 'bg-[#22C55E]' : 'bg-[#CEAC01]',
-          ].join(' ')}
-        />
-        <span
-          className={[
-            'text-[10px] font-mono',
-            entry.brandMentionedCount > 0 ? 'text-[#15803D]' : 'text-[#92400E]',
-          ].join(' ')}
+        {/* Domain name — clickable */}
+        <a
+          href={`https://${entry.domain}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-[11px] text-[#1A1A1A] hover:text-[#0066CC] hover:underline truncate w-36 shrink-0 transition-colors"
         >
-          {entry.brandMentionedCount > 0 ? companyName : 'Not present'}
+          {entry.domain}
+        </a>
+
+        {/* Competitor site badge */}
+        {entry.isCompetitorOwned && (
+          <span className="text-[10px] font-mono bg-[#F3F2EF] text-[#ABABAB] px-1.5 py-0.5 rounded shrink-0">
+            competitor site
+          </span>
+        )}
+
+        {/* Citation frequency bar */}
+        <div className="w-16 shrink-0 h-1.5 bg-[#E5E2DC] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-[#B8B4AD] rounded-full"
+            style={{ width: `${Math.round(entry.citationRate * 100)}%` }}
+          />
+        </div>
+        <span className="text-[10px] text-[#6C6C6C] font-mono shrink-0 w-12">
+          {entry.citedInProbeCount}/{entry.totalProbesInCluster}
         </span>
+
+        {/* Platform agreement dots */}
+        <PlatformDots platformCount={entry.platformCount} />
+
+        {/* Brand presence */}
+        <div className="flex items-center gap-1 shrink-0 w-24">
+          <span
+            className={[
+              'w-1.5 h-1.5 rounded-full shrink-0',
+              entry.brandMentionedCount > 0 ? 'bg-[#22C55E]' : 'bg-[#CEAC01]',
+            ].join(' ')}
+          />
+          <span
+            className={[
+              'text-[10px] font-mono',
+              entry.brandMentionedCount > 0 ? 'text-[#15803D]' : 'text-[#92400E]',
+            ].join(' ')}
+          >
+            {entry.brandMentionedCount > 0 ? companyName : 'Not present'}
+          </span>
+        </div>
+
+        {/* Competitor pills */}
+        <div className="flex items-center gap-1 flex-wrap min-w-0">
+          {visibleCompetitors.map((comp) => (
+            <span
+              key={comp}
+              className="text-[10px] font-mono bg-[#F3F2EF] text-[#6C6C6C] px-1.5 py-0.5 rounded shrink-0"
+            >
+              {comp}
+            </span>
+          ))}
+          {extraCount > 0 && (
+            <span className="text-[10px] text-[#6C6C6C] font-mono shrink-0">+{extraCount}</span>
+          )}
+        </div>
       </div>
 
-      {/* Competitor pills */}
-      <div className="flex items-center gap-1 flex-wrap min-w-0">
-        {visibleCompetitors.map((comp) => (
-          <span
-            key={comp}
-            className="text-[10px] font-mono bg-[#F3F2EF] text-[#6C6C6C] px-1.5 py-0.5 rounded shrink-0"
-          >
-            {comp}
-          </span>
-        ))}
-        {extraCount > 0 && (
-          <span className="text-[10px] text-[#6C6C6C] font-mono shrink-0">+{extraCount}</span>
-        )}
-      </div>
+      {/* Sample cited URLs */}
+      {entry.sampleUrls.length > 0 && (
+        <div className="mt-1.5 ml-7 space-y-0.5">
+          {entry.sampleUrls.map((url) => (
+            <a
+              key={url}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-[10px] text-[#ABABAB] hover:text-[#0066CC] truncate transition-colors font-mono"
+            >
+              {url.replace(/^https?:\/\//, '').replace(/\?.*$/, '')}
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
