@@ -1,5 +1,21 @@
 import type { Probe, PromptType } from '@/lib/db/types'
 
+function urlsToDomains(urls: string[]): string[] {
+  return [...new Set(urls.flatMap((url) => {
+    try { return [new URL(url).hostname.replace(/^www\./, '')] }
+    catch { return [] }
+  }))]
+}
+
+// Use raw platform citations as the source of truth.
+// parsed_json.cited_domains is derived from probe.citations during parsing,
+// but may be missing for probes where parsing failed or was done before
+// the cited_urls field was added.
+function probeUrls(probe: Probe): string[] {
+  if (probe.citations.length > 0) return probe.citations
+  return probe.parsed_json?.cited_urls ?? []
+}
+
 export type ClusterKey = 'discovery' | 'comparison' | 'workflow'
 
 export interface ClusterConfig {
@@ -71,9 +87,7 @@ function detectCompetitorDomain(domain: string, competitors: string[]): boolean 
 }
 
 export function computeSourceGaps(probes: Probe[], competitors: string[] = []): SourceGapResult {
-  const eligibleProbes = probes.filter(
-    (p) => p.parsed_json !== null && (p.parsed_json.cited_domains?.length ?? 0) > 0
-  )
+  const eligibleProbes = probes.filter((p) => probeUrls(p).length > 0)
 
   const clusters: ClusterAnalysis[] = CLUSTERS.map((cluster) => {
     const clusterProbes = eligibleProbes.filter((p) =>
@@ -114,16 +128,16 @@ export function computeSourceGaps(probes: Probe[], competitors: string[] = []): 
     }>()
 
     for (const probe of clusterProbes) {
-      const domains = new Set(probe.parsed_json!.cited_domains)
-      // Build a domain→urls lookup from cited_urls for this probe
+      const urls = probeUrls(probe)
       const urlsByDomain = new Map<string, string[]>()
-      for (const url of probe.parsed_json!.cited_urls ?? []) {
+      for (const url of urls) {
         try {
           const d = new URL(url).hostname.replace(/^www\./, '')
           if (!urlsByDomain.has(d)) urlsByDomain.set(d, [])
           urlsByDomain.get(d)!.push(url)
         } catch { /* ignore malformed URLs */ }
       }
+      const domains = new Set(urlsToDomains(urls))
 
       for (const domain of domains) {
         if (!domainMap.has(domain)) {
@@ -182,8 +196,11 @@ export function computeSourceGaps(probes: Probe[], competitors: string[] = []): 
       return b.citedInProbeCount - a.citedInProbeCount
     })
 
-    const domains = domainEntries.slice(0, 8)
-    const gapCount = domains.filter((d) => d.isGap).length
+    // Show all gaps + top 8 non-gap sources
+    const gaps = domainEntries.filter((d) => d.isGap)
+    const nonGaps = domainEntries.filter((d) => !d.isGap).slice(0, 8)
+    const domains = [...gaps, ...nonGaps]
+    const gapCount = gaps.length
 
     return { cluster, totalProbes: total, domains, hasData: true, gapCount, delta }
   })
