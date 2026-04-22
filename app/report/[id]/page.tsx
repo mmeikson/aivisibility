@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
+import { SourceGapAnalysis } from '@/components/source-gap-analysis'
+import { computeSourceGaps } from '@/lib/analysis/source-gaps'
 import { PerceptionAccordion } from '@/components/perception-tooltip'
 import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
 import { getUser } from '@/lib/supabase/server'
@@ -177,6 +179,8 @@ export default async function ReportPage({ params }: Props) {
     getProbesByReport(id),
     getUser(),
   ])
+
+  const sourceGapResult = computeSourceGaps(probes)
 
   const isSaved = !!report.user_id
   const isOwner = user && report.user_id === user.id
@@ -389,6 +393,20 @@ export default async function ReportPage({ params }: Props) {
               probes={probes}
               companyName={report.company_name ?? ''}
               platformSummaries={report.inference_json?.platform_summaries ?? {}}
+            />
+          </div>
+        )}
+
+        {/* Source gap analysis */}
+        {sourceGapResult.hasAnyData && (
+          <div className="space-y-4 fade-up fade-up-2 mb-12">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Source Gap Analysis</span>
+              <span className="flex-1 h-px bg-[#E5E2DC]" />
+            </div>
+            <SourceGapAnalysis
+              result={sourceGapResult}
+              companyName={report.company_name ?? new URL(report.url).hostname}
             />
           </div>
         )}
