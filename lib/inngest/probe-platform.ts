@@ -251,15 +251,21 @@ export async function probePerplexity(probes: Probe[], onResult: OnProbeResult, 
 export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const date = new Date().toISOString().slice(0, 10)
-  await Promise.all(probes.map(async (probe) => {
-    if (signal?.aborted) return
-    const start = Date.now()
-    try {
-      const res = await client.chat.completions.create({
-        model: 'gpt-5.4',
-        temperature: 0.3,
-        messages: [
-          { role: 'system', content: `You are a careful, analytical assistant. Your goal is to produce responses that closely resemble high-quality ChatGPT outputs.
+  const CONCURRENCY = 3
+  const queue = [...probes]
+  const workers = Array.from({ length: CONCURRENCY }, async (_, i) => {
+    if (i > 0) await sleep(i * 300) // stagger worker starts
+    while (queue.length > 0) {
+      const probe = queue.shift()
+      if (!probe) break
+      if (signal?.aborted) return
+      const start = Date.now()
+      try {
+        const res = await client.chat.completions.create({
+          model: 'gpt-5.4',
+          temperature: 0.3,
+          messages: [
+            { role: 'system', content: `You are a careful, analytical assistant. Your goal is to produce responses that closely resemble high-quality ChatGPT outputs.
 
 General behavior:
 - Interpret the user's intent and adjust the response style accordingly (informational, analytical, recommendation, etc.).
@@ -296,18 +302,21 @@ Final check before answering:
 - Ensure any included examples or brands are relevant and add value.
 
 Today's date is ${date}. The user is located in the United States.` },
-          { role: 'user', content: probe.prompt_text },
-        ],
-      }, { signal })
-      const text = res.choices?.[0]?.message?.content ?? ''
-      if (!text.trim()) throw new Error('Empty response')
-      await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.error(`[ChatGPT-API] probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
+            { role: 'user', content: probe.prompt_text },
+          ],
+        }, { signal })
+        const text = res.choices?.[0]?.message?.content ?? ''
+        if (!text.trim()) throw new Error('Empty response')
+        await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
+      } catch (err) {
+        if (signal?.aborted) return
+        console.error(`[ChatGPT-API] probe failed (${probe.id}):`, err)
+        await onResult(probe.id, { status: 'failed' })
+      }
+      await sleep(300 + Math.random() * 300) // 300–600ms between requests per worker
     }
-  }))
+  })
+  await Promise.all(workers)
 }
 
 // ---- OpenAI with web search (gpt-4o-search-preview) ----
