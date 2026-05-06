@@ -168,7 +168,7 @@ export default function LoadingPage() {
             <div className="flex justify-between">
               <span className="text-xs font-mono text-[#ABABAB]">{progress}%</span>
               <span className="text-xs font-mono text-[#ABABAB]">
-                {isComplete ? elapsed : `${elapsed} · ~4–6 min`}
+                {isComplete ? elapsed : `${elapsed} · ~2–3 min`}
               </span>
             </div>
           </div>
@@ -182,14 +182,14 @@ export default function LoadingPage() {
               </div>
             ) : (
               (() => {
-                const PLATFORM_NAMES = ['ChatGPT', 'Claude', 'Perplexity', 'Gemini']
+                const PLATFORM_NAMES = ['ChatGPT', 'Claude', 'Gemini', 'Perplexity']
 
                 // Pre-compute platform progress state from all events
                 const platformProgress: Record<string, number> = {}
                 const platformTotal: Record<string, number> = {}
                 const platformDone = new Set<string>()
                 const platformSkipped = new Set<string>()
-                let totalProbes = 5
+                let totalProbes = 4
 
                 for (const e of events) {
                   if (e.event_type === 'probes_start') {
@@ -230,9 +230,12 @@ export default function LoadingPage() {
                   if (e.event_type === 'probe_batch_done') {
                     const platform = e.message?.split(':')[0]?.trim() ?? ''
                     if (PLATFORM_NAMES.includes(platform)) continue // handled by platform block
-                    // Non-platform probe_batch_done (e.g. "Parsing responses...")
+                    // Non-platform probe_batch_done — deduplicate by message text (parse steps
+                    // all emit the same "Parsing responses..." message in parallel)
+                    const msg = e.message ?? ''
+                    if (rows.some((r) => r.message === msg)) continue
                     const isLast = e === events[events.length - 1]
-                    rows.push({ key: e.id, message: e.message ?? '', state: isLast && !isComplete ? 'running' : 'done' })
+                    rows.push({ key: e.id, message: msg, state: isLast && !isComplete ? 'running' : 'done' })
                     continue
                   }
 

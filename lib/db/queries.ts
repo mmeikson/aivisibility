@@ -95,7 +95,7 @@ export async function getRecommendationsByReport(reportId: string): Promise<Reco
     .from('recommendations')
     .select('*')
     .eq('report_id', reportId)
-    .order('priority', { ascending: false })
+    .order('priority', { ascending: true })
   if (error) throw error
   return data ?? []
 }

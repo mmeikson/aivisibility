@@ -1,32 +1,24 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport } from '@/lib/db/queries'
+import { getReport, getScoresByReport, getRecommendationsByReport, getProbesByReport, updateReport } from '@/lib/db/queries'
 import { ProbeExplorer } from '@/components/probe-explorer'
 import { SourceGapAnalysis } from '@/components/source-gap-analysis'
-import { computeSourceGaps } from '@/lib/analysis/source-gaps'
-import { PerceptionAccordion } from '@/components/perception-tooltip'
+import { computeSourceGaps, SOURCE_GAP_VERSION } from '@/lib/analysis/source-gaps'
+import { computeInsights } from '@/lib/analysis/insights'
+import { InsightsSection } from '@/components/insights-section'
 import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
+import { ReportTabs } from '@/components/report-tabs'
+import { VisibilityGauge } from '@/components/visibility-gauge'
+import { InfluentialPublications } from '@/components/influential-publications'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
-import type { Score, Recommendation, ScoreCategory } from '@/lib/db/types'
+import { ViewAllRecsButton } from '@/components/view-all-recs-button'
+import type { Score, Recommendation } from '@/lib/db/types'
 
 interface Props {
   params: Promise<{ id: string }>
 }
 
-const CATEGORY_LABELS: Record<ScoreCategory, string> = {
-  category_association: 'Category Association',
-  retrieval: 'Source Retrieval',
-  entity: 'Entity Recognition',
-  social_proof: 'Social Proof',
-}
-
-const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
-  category_association: 'Whether AI models associate your brand with your product category and recommend you in discovery queries.',
-  retrieval: 'Whether AI models with web search retrieve and cite your website when answering relevant queries.',
-  entity: 'Whether AI models correctly identify your brand as a distinct entity and avoid confusing it with others.',
-  social_proof: 'Whether third-party reviews, mentions, and endorsements reinforce your brand in AI training data.',
-}
 
 function buildSummary(
   companyName: string,
@@ -39,59 +31,38 @@ function buildSummary(
   const catScore = scores.find(s => s.category === 'category_association')?.raw_score ?? 0
   if (overallScore >= 80) {
     s1 = `${companyName} is well covered by AI engines and consistently surfaces in ${category} queries.`
-  } else if (overallScore >= 65) {
+  } else if (overallScore >= 60) {
     const strong = catScore >= 70 ? 'solid category association' : 'growing presence'
     s1 = `${companyName} has ${strong} in the ${category} space, though there are meaningful gaps to close.`
-  } else if (overallScore >= 45) {
-    s1 = `${companyName} has moderate AI visibility in the ${category} category — AI engines mention it in some relevant queries but miss it in others.`
+  } else if (overallScore >= 40) {
+    s1 = `${companyName} has weak AI visibility in the ${category} category — AI engines mention it in some queries but miss it in most.`
   } else {
-    s1 = `${companyName} has limited AI visibility in the ${category} space, and AI engines rarely surface it in discovery or recommendation queries.`
+    s1 = `${companyName} has very limited AI visibility in the ${category} space, and AI engines rarely surface it in discovery or recommendation queries.`
   }
 
   // Sentence 2 — top opportunity (lowest-scoring weighted component)
   const COMPONENT_ACTIONS: Record<string, string> = {
     // category_association
-    mention_rate: 'building more AI-indexed content in your category',
-    discovery_mention_rate: 'building more AI-indexed content in your category',
-    position: 'working toward top-of-list placement in AI recommendations',
-    avg_mention_position: 'working toward top-of-list placement in AI recommendations',
-    competitor_gap: 'closing the visibility gap against leading competitors',
-    cross_platform: 'improving consistency across all AI platforms',
-    cross_platform_consistency: 'improving consistency across all AI platforms',
+    parametric_score: 'building more AI-indexed content in your category',
+    retrieval_score: 'increasing retrieval-platform visibility for your category',
+    win_rate: 'closing the visibility gap against leading competitors',
     // retrieval
+    mention_rate: 'building more AI-indexed content in your category',
     roundup_presence: 'earning placement in category comparison and roundup articles',
     citation_rate: 'making your site a citable source for AI retrieval engines',
-    direct_url_citation: 'making your site a citable source for AI retrieval engines',
+    recommendation_quality: 'increasing the confidence with which AI models recommend you',
     // entity
-    schema_markup: 'adding structured data markup to your website',
-    wikipedia: 'establishing a Wikipedia presence',
-    profile_completeness: 'completing your brand profiles across key platforms',
-    description_consistency: 'aligning how your brand is described across the web',
-    description_specificity: 'sharpening your brand description across the web',
+    entity_disambiguation: 'clarifying your brand identity to reduce AI confusion',
     // social proof
-    g2_presence: 'building your G2 review profile',
-    capterra_presence: 'establishing a Capterra presence',
-    product_hunt: 'launching on Product Hunt',
-    amazon_reviews: 'growing your Amazon review profile',
-    trustpilot_presence: 'building Trustpilot reviews',
-    reddit_mentions: 'building community presence on Reddit',
     listicle_appearances: 'getting featured in best-of category articles',
-    editorial_mentions: 'earning coverage in editorial review publications',
-    youtube_reviews: 'getting your product reviewed on YouTube',
-    app_reviews: 'building your app store review presence',
+    review_presence: 'building third-party review presence for your brand',
   }
 
-  // Find the component with the worst score relative to its max (using COMPONENT_MAX from the category page)
   const COMPONENT_MAX: Record<string, number> = {
-    mention_rate: 30, discovery_mention_rate: 40, position: 20, avg_mention_position: 20,
-    competitor_gap: 20, cross_platform: 20, cross_platform_consistency: 20,
-    roundup_presence: 30, citation_rate: 10, direct_url_citation: 30,
-    schema_markup: 20, wikipedia: 10, profile_completeness: 20,
-    description_consistency: 40, description_specificity: 10,
-    g2_presence: 25, capterra_presence: 15, product_hunt: 15,
-    amazon_reviews: 30, trustpilot_presence: 20, reddit_mentions: 20,
-    listicle_appearances: 25, editorial_mentions: 10, youtube_reviews: 5,
-    app_reviews: 10,
+    parametric_score: 50, retrieval_score: 50, win_rate: 20,
+    mention_rate: 50, roundup_presence: 30, citation_rate: 10, recommendation_quality: 10,
+    entity_disambiguation: 100,
+    listicle_appearances: 50, review_presence: 50,
   }
 
   let worstKey = ''
@@ -100,7 +71,7 @@ function buildSummary(
     for (const [key, pts] of Object.entries(score.component_scores_json)) {
       const max = COMPONENT_MAX[key] ?? (key.includes('.') ? 20 : undefined)
       if (!max) continue
-      const gap = max - pts
+      const gap = max - (pts as number)
       if (gap > worstGap) { worstGap = gap; worstKey = key }
     }
   }
@@ -124,13 +95,6 @@ function guessCompetitorDomain(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
 }
 
-function severityLabel(score: number): string {
-  if (score >= 80) return 'Healthy'
-  if (score >= 60) return 'Moderate'
-  if (score >= 40) return 'Weak'
-  return 'Critical'
-}
-
 function severityClass(score: number): string {
   if (score >= 80) return 'severity-healthy'
   if (score >= 60) return 'severity-moderate'
@@ -138,12 +102,6 @@ function severityClass(score: number): string {
   return 'severity-critical'
 }
 
-function severityBgClass(score: number): string {
-  if (score >= 80) return 'severity-bg-healthy'
-  if (score >= 60) return 'severity-bg-moderate'
-  if (score >= 40) return 'severity-bg-weak'
-  return 'severity-bg-critical'
-}
 
 export default async function ReportPage({ params }: Props) {
   const { id } = await params
@@ -180,7 +138,30 @@ export default async function ReportPage({ params }: Props) {
     getUser(),
   ])
 
-  const sourceGapResult = computeSourceGaps(probes, report.competitors ?? [])
+  const ownDomain = (() => { try { return new URL(report.url).hostname.replace(/^www\./, '') } catch { return '' } })()
+  const allCompetitors = [
+    ...(report.competitors ?? []),
+    ...probes.flatMap((p) => p.parsed_json?.competitor_mentions ?? []),
+  ].filter((v, i, a) => a.indexOf(v) === i)
+  const inf = report.inference_json
+  const cached = inf?.source_gap
+  let sourceGapResult = (cached?.version === SOURCE_GAP_VERSION) ? cached : null
+  if (!sourceGapResult) {
+    sourceGapResult = await computeSourceGaps(
+      probes,
+      allCompetitors,
+      ownDomain,
+      inf?.company_name ?? '',
+      inf?.category ?? '',
+      inf?.canonical_description ?? '',
+      inf?.primary_use_case ?? '',
+      inf?.target_customer ?? '',
+    )
+    if (inf) {
+      await updateReport(id, { inference_json: { ...inf, source_gap: sourceGapResult } })
+    }
+  }
+  const insights = computeInsights(probes)
 
   const isSaved = !!report.user_id
   const isOwner = user && report.user_id === user.id
@@ -202,12 +183,6 @@ export default async function ReportPage({ params }: Props) {
     : 0
 
   const probeCount = probes.filter(p => p.status === 'complete').length
-
-  // Disambiguation: collect all unique entities AI engines confused the brand with
-  const confusedProbes = probes.filter(p => p.parsed_json?.entity_confused)
-  const confusedWith = [...new Set(
-    confusedProbes.map(p => p.parsed_json?.confused_with).filter(Boolean) as string[]
-  )]
 
   // Competitor ranking: derive from brand-agnostic probes (discovery, job_to_be_done, ranking)
   const rankingProbes = probes.filter(
@@ -254,10 +229,6 @@ export default async function ReportPage({ params }: Props) {
     ...competitorPoints,
   ]
 
-  // All 4 scores in display order
-  const SCORE_ORDER: ScoreCategory[] = ['category_association', 'retrieval', 'social_proof', 'entity']
-  const orderedScores = SCORE_ORDER.flatMap(cat => scores.filter(s => s.category === cat))
-
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
@@ -295,140 +266,148 @@ export default async function ReportPage({ params }: Props) {
 
 
 
-      <div className="flex-1 px-6 py-12 max-w-[1024px] mx-auto w-full">
-
-        {/* Report header */}
-        <div className="space-y-4 mb-12 fade-up">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
-                AI Visibility Report
-              </div>
-              <ShareButton reportId={id} />
+      {/* Report page header — always visible */}
+      <div className="px-6 pt-10 pb-0 max-w-[1024px] mx-auto w-full fade-up">
+        <div className="space-y-1.5 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
+              AI Visibility Report
             </div>
-            <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={faviconUrl(new URL(report.url).hostname)}
-                alt=""
-                width={28}
-                height={28}
-                className="rounded-md"
-              />
-              <h1
-                className="text-[clamp(1.6rem,4vw,2.6rem)] leading-[1.05] tracking-tight text-[#141414]"
-                style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
-              >
-                {report.company_name ?? new URL(report.url).hostname}
-              </h1>
-            </div>
-            {report.category && (
-              report.inference_json?.canonical_description
-                ? <PerceptionAccordion category={report.category} description={report.inference_json.canonical_description} />
-                : <p className="text-base text-[#6C6C6C]">{report.category}</p>
-            )}
+            <ShareButton reportId={id} />
           </div>
-
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono">
-            <span>{probeCount} probes</span>
-            <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-            <span>4 platforms</span>
-            <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-            <span>{report.completed_at ? new Date(report.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={faviconUrl(new URL(report.url).hostname)}
+              alt=""
+              width={28}
+              height={28}
+              className="rounded-md"
+            />
+            <h1
+              className="text-[clamp(1.6rem,4vw,2.6rem)] leading-[1.05] tracking-tight text-[#141414]"
+              style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
+            >
+              {report.company_name ?? new URL(report.url).hostname}
+            </h1>
           </div>
-
-
-          {/* Summary + score row */}
-          {scores.length > 0 && report.category && (
-            <div className="flex items-start gap-8 pt-6 border-t border-[#E5E2DC]">
-              <p
-                className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
-                style={{ fontFamily: 'var(--font-geist-sans)' }}
-              >
-                {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
-              </p>
-              <div className="shrink-0 text-right">
-                <div className={`score-number text-5xl ${severityClass(overallScore)}`}>{overallScore}</div>
-                <div className="text-xs text-[#ABABAB] mt-0.5">{severityLabel(overallScore)} overall</div>
-              </div>
-            </div>
+          {report.category && (
+            <p className="text-base text-[#6C6C6C]">{report.category}</p>
           )}
         </div>
 
-        {/* Competitive ranking */}
-        {quadrantPoints.length > 1 && rankingTotal > 0 && (
-          <div className="space-y-4 fade-up fade-up-1 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
-          </div>
-        )}
+        {/* Meta row */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono mb-6">
+          <span>{probeCount} probes</span>
+          <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
+          <span>4 platforms</span>
+          <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
+          <span>{report.completed_at ? new Date(report.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+        </div>
+      </div>
 
-        {/* Quick wins */}
-        {recommendations.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-2 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Quick wins</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
-              {recommendations.slice(0, 5).map((rec, i) => (
-                <RecCard key={rec.id} rec={rec} reportId={id} index={i} />
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="flex-1 px-6 pb-12 max-w-[1024px] mx-auto w-full">
+        <ReportTabs
+          recommendations={recommendations}
+          overview={
+            <div className="space-y-12">
+              {/* Visibility Assessment card */}
+              {scores.length > 0 && report.category && (
+                <div className="rounded-lg border border-[#E5E2DC] bg-white px-5 py-4 flex flex-col gap-4">
+                  <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">Visibility Assessment</p>
+                  <div className="flex flex-col-reverse sm:flex-row items-start gap-6">
+                    <p
+                      className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
+                      style={{ fontFamily: 'var(--font-geist-sans)' }}
+                    >
+                      {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
+                    </p>
+                    <div className="shrink-0 sm:self-start">
+                      <VisibilityGauge score={overallScore} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Competitive ranking */}
+              {quadrantPoints.length > 1 && rankingTotal > 0 && (
+                <div className="space-y-4 fade-up fade-up-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
+                    <span className="flex-1 h-px bg-[#E5E2DC]" />
+                  </div>
+                  <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
+                </div>
+              )}
 
-        {/* Engine-first probe view */}
-        {probes.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-2 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Prompt Analysis</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <ProbeExplorer
-              probes={probes}
-              companyName={report.company_name ?? ''}
-              platformSummaries={report.inference_json?.platform_summaries ?? {}}
-            />
-          </div>
-        )}
+              {/* Top Voices */}
+              {sourceGapResult.hasAnyData && (
+                <div className="space-y-4 fade-up fade-up-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Top Voices in Your Category</span>
+                    <span className="flex-1 h-px bg-[#E5E2DC]" />
+                  </div>
+                  <InfluentialPublications entries={
+                    (Object.values(sourceGapResult.byType) as import('@/lib/analysis/source-gaps').DomainEntry[][])
+                      .flat()
+                      .sort((a, b) => b.citedInProbeCount - a.citedInProbeCount)
+                  } />
+                </div>
+              )}
 
-        {/* Source gap analysis */}
-        {sourceGapResult.hasAnyData && (
-          <div className="space-y-4 fade-up fade-up-2 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Source Gap Analysis</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
-            </div>
-            <SourceGapAnalysis
-              result={sourceGapResult}
-              companyName={report.company_name ?? new URL(report.url).hostname}
-            />
-          </div>
-        )}
+              {/* Insights */}
+              {insights.salienceTotal > 0 && (
+                <div className="space-y-4 fade-up fade-up-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Insights</span>
+                    <span className="flex-1 h-px bg-[#E5E2DC]" />
+                  </div>
+                  <InsightsSection
+                    insights={insights}
+                    companyName={report.company_name ?? new URL(report.url).hostname}
+                    description={report.inference_json?.canonical_description}
+                  />
+                </div>
+              )}
 
-        {/* Score cards — all 4 categories */}
-        {orderedScores.length > 0 && (
-          <div className="space-y-4 fade-up fade-up-3 mb-12">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Scores</span>
-              <span className="flex-1 h-px bg-[#E5E2DC]" />
+              {/* Quick wins */}
+              {recommendations.length > 0 && (
+                <div className="space-y-4 fade-up fade-up-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Top recommendations</span>
+                    <span className="flex-1 h-px bg-[#E5E2DC]" />
+                  </div>
+                  <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
+                    {recommendations.slice(0, 5).map((rec, i) => (
+                      <RecCard key={rec.id} rec={rec} index={i} />
+                    ))}
+                  </div>
+                  <ViewAllRecsButton />
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {orderedScores.map((score) => (
-                <FoundationCard
-                  key={score.id}
-                  score={score}
-                  reportId={id}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+          }
+          prompts={
+            probes.length > 0 ? (
+              <ProbeExplorer
+                probes={probes}
+                companyName={report.company_name ?? ''}
+                platformSummaries={report.inference_json?.platform_summaries ?? {}}
+              />
+            ) : (
+              <p className="text-sm text-[#ABABAB]">No probe data available.</p>
+            )
+          }
+          citations={
+            sourceGapResult.hasAnyData ? (
+              <SourceGapAnalysis
+                result={sourceGapResult}
+                companyName={report.company_name ?? new URL(report.url).hostname}
+              />
+            ) : (
+              <p className="text-sm text-[#ABABAB]">No citation data available.</p>
+            )
+          }
+        />
 
 
       </div>
@@ -444,63 +423,13 @@ export default async function ReportPage({ params }: Props) {
   )
 }
 
-function FoundationCard({ score, reportId }: {
-  score: Score
-  reportId: string
-}) {
-  const cat = score.category as ScoreCategory
-  const label = CATEGORY_LABELS[cat] ?? cat
-  const description = CATEGORY_DESCRIPTIONS[cat]
-  const sev = severityLabel(score.raw_score)
-  const sevClass = severityClass(score.raw_score)
-  const bgClass = severityBgClass(score.raw_score)
 
+function RecCard({ rec, index }: { rec: Recommendation; index: number }) {
   return (
-    <Link
-      href={`/report/${reportId}/${score.category}`}
-      className="group block rounded-lg border border-[#E5E2DC] p-4 bg-white hover:border-[#141414]/20 transition-all duration-200"
-    >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <p className="text-xs font-mono text-[#6C6C6C] uppercase tracking-widest">{label}</p>
-        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${bgClass} uppercase tracking-wide shrink-0`}>
-          {sev}
-        </span>
-      </div>
-      <div className={`score-number text-3xl leading-none mb-3 ${sevClass}`}>
-        {score.raw_score}
-      </div>
-      <div className="h-1 bg-[#F3F2EF] rounded-full overflow-hidden mb-3">
-        <div
-          className={`h-full rounded-full transition-all duration-700 ${
-            score.raw_score >= 80 ? 'severity-bar-healthy' :
-            score.raw_score >= 60 ? 'severity-bar-moderate' :
-            score.raw_score >= 40 ? 'severity-bar-weak' : 'severity-bar-critical'
-          }`}
-          style={{ width: `${score.raw_score}%` }}
-        />
-      </div>
-      {description && (
-        <p className="text-xs text-[#ABABAB] leading-relaxed mb-3">{description}</p>
-      )}
-<span className="inline-flex items-center gap-1 text-xs text-[#141414] font-medium group-hover:gap-2 transition-all">
-        See recommendations <span>→</span>
-      </span>
-    </Link>
-  )
-}
-
-function RecCard({ rec, reportId, index }: { rec: Recommendation; reportId: string; index: number }) {
-  return (
-    <Link
-      href={`/report/${reportId}/${rec.type}`}
-      className="flex items-center gap-4 bg-white px-5 py-3 hover:bg-[#F7F6F3] transition-colors"
-    >
+    <div className="flex items-center gap-4 bg-white px-5 py-3">
       <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
       <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
-      {rec.effort && (
-        <span className="shrink-0 text-xs text-[#ABABAB] font-mono">{rec.effort}</span>
-      )}
-      <span className="shrink-0 text-xs text-[#6C6C6C] font-mono">→</span>
-    </Link>
+    </div>
   )
 }
+

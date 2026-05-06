@@ -1,6 +1,6 @@
 export type ReportStatus = 'pending' | 'running' | 'complete' | 'failed'
-export type Platform = 'openai' | 'anthropic' | 'perplexity' | 'google' | 'openai_search'
-export type PromptType = 'discovery' | 'comparison' | 'job_to_be_done' | 'pairwise' | 'entity_check' | 'ranking'
+export type Platform = 'openai' | 'perplexity' | 'anthropic' | 'google'
+export type PromptType = 'discovery' | 'comparison' | 'job_to_be_done' | 'entity_check' | 'ranking'
 export type ScoreCategory = 'entity' | 'category_association' | 'retrieval' | 'social_proof'
 export type ProbeStatus = 'pending' | 'complete' | 'failed'
 
@@ -34,6 +34,11 @@ export interface IcpPersona {
   primary_need: string // e.g. "collect rent online without a property manager"
 }
 
+export interface PlatformPerception {
+  summary: string
+  quotes: string[]
+}
+
 export interface InferenceResult {
   company_name: string
   canonical_description: string
@@ -44,7 +49,9 @@ export interface InferenceResult {
   key_features?: string[]
   confidence: Record<string, 'low' | 'medium' | 'high'>
   platform_summaries?: Record<string, string>
+  platform_perceptions?: Record<string, PlatformPerception>
   icp_personas?: IcpPersona[]
+  source_gap?: import('@/lib/analysis/source-gaps').SourceGapResult
 }
 
 export interface ParsedProbeResult {
@@ -82,6 +89,11 @@ export interface Score {
   created_at: string
 }
 
+export interface ActionStep {
+  target: string
+  step: string
+}
+
 export interface Recommendation {
   id: string
   score_id: string
@@ -93,7 +105,7 @@ export interface Recommendation {
   affected_platforms: string[]
   why_it_matters: string | null
   actions: string[]
-  copy_asset_text: string | null
+  action_steps: ActionStep[]
   created_at: string
 }
 

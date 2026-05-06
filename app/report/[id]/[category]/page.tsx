@@ -26,73 +26,38 @@ const CATEGORY_DESCRIPTIONS: Record<ScoreCategory, string> = {
 
 const COMPONENT_LABELS: Record<string, string> = {
   // category_association
-  discovery_mention_rate: 'Discovery mention rate',
-  avg_mention_position: 'Avg. mention position',
-  competitor_gap: 'Competitor gap',
-  cross_platform_consistency: 'Cross-platform consistency',
+  parametric_score: 'Parametric surface',
+  retrieval_score: 'Retrieval surface',
+  win_rate: 'Pairwise win rate',
   // retrieval
   mention_rate: 'Mention rate',
-  direct_url_citation: 'Direct URL citation',
   roundup_presence: 'Roundup presence',
-  content_format: 'Content format',
+  citation_rate: 'Citation rate',
+  recommendation_quality: 'Recommendation quality',
   // entity
-  schema_markup: 'Schema markup',
-  description_specificity: 'Description specificity',
-  profile_completeness: 'Profile completeness',
-  wikipedia: 'Wikipedia presence',
-  description_consistency: 'Description consistency',
-  // social_proof — saas
-  g2_presence: 'G2 presence',
-  capterra_presence: 'Capterra presence',
-  product_hunt: 'Product Hunt',
-  // social_proof — consumer
-  amazon_reviews: 'Amazon reviews',
-  trustpilot_presence: 'Trustpilot presence',
-  youtube_reviews: 'YouTube reviews',
-  // social_proof — health_wellness
-  editorial_mentions: 'Editorial mentions',
-  // social_proof — fintech
-  app_reviews: 'App store reviews',
-  // social_proof — shared
-  reddit_mentions: 'Reddit mentions',
+  entity_disambiguation: 'Entity disambiguation',
+  // social_proof
   listicle_appearances: 'Listicle appearances',
+  review_presence: 'Review presence',
 }
 
 const COMPONENT_MAX: Record<string, number> = {
-  // category_association (total 100)
-  discovery_mention_rate: 40,
-  avg_mention_position: 20,
-  competitor_gap: 20,
-  cross_platform_consistency: 20,
+  // category_association (total 100, clamped)
+  parametric_score: 50,
+  retrieval_score: 50,
+  win_rate: 20,
   // retrieval (total 100)
-  mention_rate: 30,
-  direct_url_citation: 30,
-  roundup_presence: 20,
-  content_format: 20,
+  mention_rate: 50,
+  roundup_presence: 30,
+  citation_rate: 10,
+  recommendation_quality: 10,
   // entity (total 100)
-  schema_markup: 20,
-  description_specificity: 10,
-  profile_completeness: 20,
-  wikipedia: 10,
-  description_consistency: 40,
-  // social_proof — saas (total 100)
-  g2_presence: 25,
-  capterra_presence: 15,
-  product_hunt: 15,
-  // social_proof — consumer (total 100)
-  amazon_reviews: 30,
-  trustpilot_presence: 20,
-  youtube_reviews: 5,
-  // social_proof — health_wellness (total 100)
-  editorial_mentions: 10,
-  // social_proof — fintech (total 100)
-  app_reviews: 10,
-  // social_proof — shared
-  reddit_mentions: 20,
-  listicle_appearances: 25,
+  entity_disambiguation: 100,
+  // social_proof (total 100)
+  listicle_appearances: 50,
+  review_presence: 50,
 }
 
-const EFFORT_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2 }
 
 function severityLabel(score: number): string {
   if (score >= 80) return 'Healthy'
@@ -129,11 +94,7 @@ export default async function CategoryPage({ params }: Props) {
 
   const recs = allRecs
     .filter((r) => r.type === cat)
-    .sort((a, b) => {
-      const ea = EFFORT_ORDER[a.effort?.toLowerCase() ?? 'medium'] ?? 1
-      const eb = EFFORT_ORDER[b.effort?.toLowerCase() ?? 'medium'] ?? 1
-      return ea - eb || b.priority - a.priority
-    })
+    .sort((a, b) => a.priority - b.priority)
 
   const components = Object.entries(score.component_scores_json)
 

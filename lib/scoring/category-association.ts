@@ -6,9 +6,9 @@ import type { Probe } from '@/lib/db/types'
 
 // Within-group weights derived from original market-share proportions.
 // Parametric group: openai(0.60) + anthropic(0.20) → 0.75 / 0.25
-// Retrieval group:  google(0.12) + perplexity(0.08) → 0.60 / 0.40
+// Retrieval group:  google only
 const PARAMETRIC_WEIGHTS: Record<string, number> = { openai: 0.75, anthropic: 0.25 }
-const RETRIEVAL_WEIGHTS: Record<string, number> = { google: 0.60, perplexity: 0.40 }
+const RETRIEVAL_WEIGHTS: Record<string, number> = { google: 1.0 }
 
 function strengthWeight(strength: string): number {
   return strength === 'confident' ? 1.0 : strength === 'hedged' ? 0.5 : 0.0
@@ -45,13 +45,13 @@ export function scoreCategoryAssociation(
   const parametric_score = Math.round(parametricRate * 50)
 
   // Sub-score 2: Retrieval surface (0–50)
-  // How strongly is the brand present in live-retrieval responses (Perplexity, Google)?
+  // How strongly is the brand present in live-retrieval responses (Google)?
   const retrievalRate = weightedStrengthRate(discovery, RETRIEVAL_WEIGHTS)
   const retrieval_score = Math.round(retrievalRate * 50)
 
-  // Component 3: Pairwise win rate (0–20)
+  // Component 3: Comparison win rate (0–20)
   // Direct competitive displacement: brand wins head-to-head comparisons with confident recommendation
-  const pairwise = probes.filter((p) => p.prompt_type === 'pairwise' && p.parsed_json)
+  const pairwise = probes.filter((p) => p.prompt_type === 'comparison' && p.parsed_json)
   const wins = pairwise.filter(
     (p) => p.parsed_json!.was_mentioned && p.parsed_json!.recommendation_strength === 'confident'
   ).length

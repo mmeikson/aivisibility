@@ -6,24 +6,22 @@ import type { Probe } from '@/lib/db/types'
 
 const PLATFORM_LABELS: Record<string, string> = {
   openai: 'ChatGPT',
-  anthropic: 'Claude',
   perplexity: 'Perplexity',
+  anthropic: 'Claude',
   google: 'Gemini',
-  openai_search: 'ChatGPT Search',
 }
 
 const PLATFORM_ICONS: Record<string, string> = {
   openai: '/logos/ChatGPT-Logo.svg',
-  anthropic: '/logos/claude-color.svg',
   perplexity: '/logos/Perplexity--Streamline-Simple-Icons.svg',
+  anthropic: '/logos/claude-color.svg',
   google: '/logos/gemini-color.svg',
-  openai_search: '/logos/ChatGPT-Logo.svg',
 }
 
 const ENGINE_USERS: Record<string, string> = {
   openai: '~900M users',
-  anthropic: '~30M users',
   perplexity: '~15M users',
+  anthropic: '~30M users',
   google: '~300M users',
 }
 
@@ -33,7 +31,12 @@ const PROMPT_TYPE_LABELS: Record<string, string> = {
   job_to_be_done: 'Job-to-be-done',
 }
 
-const PROMPT_TYPES = ['discovery', 'comparison', 'job_to_be_done'] as const
+const PROMPT_TYPE_ORDER: Record<string, number> = {
+  discovery: 0,
+  job_to_be_done: 1,
+  comparison: 2,
+  entity_check: 3,
+}
 
 interface Props {
   probes: Probe[]
@@ -55,6 +58,13 @@ function buildMatrix(probes: Probe[], platforms: readonly string[]): {
       promptOrder.push(p.prompt_text)
     }
   }
+  // Sort by prompt_type so rows are visually grouped
+  const typeOf = new Map(probes.map((p) => [p.prompt_text, p.prompt_type]))
+  promptOrder.sort((a, b) => {
+    const oa = PROMPT_TYPE_ORDER[typeOf.get(a) ?? ''] ?? 99
+    const ob = PROMPT_TYPE_ORDER[typeOf.get(b) ?? ''] ?? 99
+    return oa - ob
+  })
   const matrix = new Map<string, Map<string, Probe>>()
   for (const text of promptOrder) {
     const row = new Map<string, Probe>()
@@ -94,7 +104,7 @@ function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () 
 export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: Props) {
   const [selected, setSelected] = useState<Probe | null>(null)
 
-  const platforms = ['openai', 'anthropic', 'perplexity', 'google', 'openai_search'] as const
+  const platforms = ['openai', 'perplexity', 'anthropic', 'google'] as const
   const activePlatforms = platforms.filter((p) => probes.some((r) => r.platform === p))
 
   const { prompts, matrix } = buildMatrix(probes, activePlatforms)
@@ -121,7 +131,7 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
                 <th key={p} className="px-3 py-3 text-center whitespace-nowrap">
                   <div className="flex flex-col items-center gap-1">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={PLATFORM_ICONS[p]} alt={PLATFORM_LABELS[p]} width={16} height={16} className="shrink-0" />
+                    <img src={PLATFORM_ICONS[p]} alt={PLATFORM_LABELS[p]} title={PLATFORM_LABELS[p]} width={16} height={16} className="shrink-0" />
                     <span className="text-[10px] font-mono text-[#ABABAB] tracking-wide">
                       {stats[p]?.mentioned ?? 0}/{stats[p]?.total ?? 0}
                     </span>
@@ -352,9 +362,9 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-[#6C6C6C] hover:text-[#141414] truncate transition-colors"
+                    className="text-xs text-[#6C6C6C] hover:text-[#141414] break-all transition-colors"
                   >
-                    {url.replace(/^https?:\/\//, '').replace(/\?.*$/, '')}
+                    {url}
                   </a>
                 </div>
               ))}

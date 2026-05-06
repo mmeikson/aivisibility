@@ -5,7 +5,7 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 import { crawlSite } from '../lib/crawler'
-import { inferBusinessContext, generateProbes } from '../lib/inference'
+import { inferAndGenerateProbes } from '../lib/inference'
 
 async function main() {
   const url = process.argv[2] ?? 'https://linear.app'
@@ -15,18 +15,16 @@ async function main() {
   console.log(`Pages crawled: ${site.pages.length}`)
   site.pages.forEach((p) => console.log(`  ${p.url} — ${p.text.split(' ').length} words`))
 
-  console.log('\nRunning business understanding...')
-  const inference = await inferBusinessContext(site)
+  console.log('\nRunning business understanding + probe generation...')
+  const { inference, probes } = await inferAndGenerateProbes(site)
   console.log('\nInference result:')
   console.log(JSON.stringify(inference, null, 2))
 
-  console.log('\nGenerating probes...')
-  const probes = await generateProbes(inference)
   console.log(`\nGenerated ${probes.length} probes:`)
-  const byType = probes.reduce((acc, p) => {
+  const byType = probes.reduce((acc: Record<string, number>, p) => {
     acc[p.prompt_type] = (acc[p.prompt_type] ?? 0) + 1
     return acc
-  }, {} as Record<string, number>)
+  }, {})
   console.log('  By type:', byType)
   probes.forEach((p) => console.log(`  [${p.prompt_type}] ${p.prompt_text}`))
 }

@@ -100,6 +100,37 @@
 .fade-up-4 { animation-delay: 0.26s; }
 .fade-up-5 { animation-delay: 0.33s; }
 
+/* Homepage "visible" blur-to-focus effect */
+@keyframes blur-to-focus {
+  from { filter: blur(16px); opacity: 0.6; }
+  to   { filter: blur(0px); opacity: 1; }
+}
+
+[data-blur-phase="focusing"] {
+  animation: blur-to-focus 5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  display: inline-block;
+}
+
+[data-blur-phase="blurred"] {
+  filter: blur(16px);
+  opacity: 0.6;
+  transition: filter 0.4s ease-in, opacity 0.4s ease-in;
+  display: inline-block;
+}
+
+[data-blur-phase="clear"] {
+  filter: blur(0px);
+  opacity: 1;
+  display: inline-block;
+}
+
+/* Homepage hero gradient */
+.homepage-hero {
+  background-image:
+    radial-gradient(ellipse 120% 60% at 50% 110%, rgba(200,240,135,0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 40% at 50% 130%, rgba(200,240,135,0.10) 0%, transparent 50%);
+}
+
 /* Pulse dot */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

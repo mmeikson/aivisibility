@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createReport } from '@/lib/db/queries'
+import { createReport, emitEvent } from '@/lib/db/queries'
 import { inngest } from '@/lib/inngest/client'
 import { getUser } from '@/lib/supabase/server'
 
@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
 
   const user = await getUser()
   const report = await createReport(normalizedUrl, user?.id)
+
+  // Emit immediately so the loading page shows activity before Inngest picks up
+  await emitEvent(report.id, 'crawl_start', 'Starting analysis...')
 
   // Trigger the Inngest pipeline
   await inngest.send({ name: 'report/run', data: { reportId: report.id } })

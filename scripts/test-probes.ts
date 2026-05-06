@@ -1,5 +1,5 @@
 // Smoke test: run a single prompt against each platform directly
-// Run with: npx tsx scripts/test-probes.ts [openai|anthropic|perplexity|google]
+// Run with: npx tsx scripts/test-probes.ts [openai|anthropic|google]
 
 import { config } from 'dotenv'
 config({ path: '.env.local' })
@@ -35,21 +35,6 @@ async function testAnthropic() {
   console.log(text.slice(0, 400))
 }
 
-async function testPerplexity() {
-  if (!process.env.PERPLEXITY_API_KEY) { console.log('Skipped — no PERPLEXITY_API_KEY'); return }
-  const client = new OpenAI({ apiKey: process.env.PERPLEXITY_API_KEY, baseURL: 'https://api.perplexity.ai' })
-  const start = Date.now()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const res = await (client.chat.completions.create as any)({
-    model: 'sonar-pro',
-    messages: [{ role: 'user', content: PROMPT }],
-    max_tokens: 512,
-  })
-  console.log(`Latency: ${Date.now() - start}ms`)
-  console.log(res.choices?.[0]?.message?.content?.slice(0, 400))
-  if (res.citations?.length) console.log(`Citations (${res.citations.length}):`, res.citations.slice(0, 3))
-}
-
 async function testGoogle() {
   const genai = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY!)
   const model = genai.getGenerativeModel({
@@ -74,7 +59,6 @@ async function main() {
 
   if (platform === 'all' || platform === 'openai') await run('OpenAI (gpt-4o)', testOpenAI)
   if (platform === 'all' || platform === 'anthropic') await run('Anthropic (claude-sonnet-4-6)', testAnthropic)
-  if (platform === 'all' || platform === 'perplexity') await run('Perplexity (sonar-pro)', testPerplexity)
   if (platform === 'all' || platform === 'google') await run('Google (gemini-2.5-flash)', testGoogle)
 }
 

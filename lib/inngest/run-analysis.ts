@@ -20,8 +20,8 @@ function startCancellationWatch(reportId: string): { signal: AbortSignal; stop: 
   return { signal: ac.signal, stop: () => { stopped = true; ac.abort() } }
 }
 import { crawlSite } from '@/lib/crawler'
-import { inferBusinessContext, generateProbes, generateIcpPersonas } from '@/lib/inference'
-import { probeOpenAI, probeOpenAIDirect, probeOpenAISearch, probeAnthropic, probePerplexity, probeGoogle, probeGoogleDirect, submitOpenAIProbes, submitGoogleProbes, type OnProbeResult } from './probe-platform'
+import { inferAndGenerateProbes } from '@/lib/inference'
+import { probeOpenAIDirect, probePerplexity, probeAnthropic, probeGoogleDirect, type OnProbeResult } from './probe-platform'
 import { parseProbeResponses } from '@/lib/parse-responses'
 import { scoreCategoryAssociation } from '@/lib/scoring/category-association'
 import { scoreRetrieval } from '@/lib/scoring/retrieval'
@@ -29,7 +29,8 @@ import { scoreEntity } from '@/lib/scoring/entity'
 import { scoreSocialProof } from '@/lib/scoring/social-proof'
 import { priorityScore } from '@/lib/scoring/priority'
 import { generateRecommendations } from '@/lib/recommendations'
-import { generatePlatformSummaries } from '@/lib/platform-summaries'
+import { computeSourceGaps } from '@/lib/analysis/source-gaps'
+import { generatePlatformPerceptions } from '@/lib/platform-summaries'
 
 export const runAnalysis = inngest.createFunction(
   {
@@ -49,10 +50,9 @@ export const runAnalysis = inngest.createFunction(
   }) => {
     const { reportId } = event.data
 
-    // Step 1: Mark running
+    // Step 1: Mark running (crawl_start already emitted by the API route)
     await step.run('mark-running', async () => {
       await updateReport(reportId, { status: 'running' })
-      await emitEvent(reportId, 'crawl_start', 'Crawling website...')
     })
 
     // Step 2: Crawl
@@ -72,264 +72,156 @@ export const runAnalysis = inngest.createFunction(
       return site
     })
 
-    // Step 3: Business understanding
-    let inference = await step.run('business-understanding', async () => {
+    // Step 3: Business understanding + probe generation (single Sonnet call)
+    let inference = await step.run('business-and-probes', async () => {
       await emitEvent(reportId, 'crawl_done', 'Understanding your business...')
-      const result = await inferBusinessContext(crawlResult)
 
-      await updateReport(reportId, {
-        company_name: result.company_name,
-        category: result.category,
-        competitors: result.competitors,
-        inference_json: result,
-      })
-
-      await emitEvent(reportId, 'inference_done', `Identified: ${result.company_name} — ${result.category}`)
-      return result
-    })
-
-    // Step 3.5: Generate ICP personas (optional — enabled by ENABLE_ICP_PROBES=true)
-    if (process.env.ENABLE_ICP_PROBES === 'true') {
-      inference = await step.run('generate-icps', async () => {
-        const personas = await generateIcpPersonas(inference)
-        const updated = { ...inference, icp_personas: personas }
-        await updateReport(reportId, { inference_json: updated })
-        return updated
-      })
-    }
-
-    // Step 4: Probe generation
-    await step.run('probe-generation', async () => {
-      await emitEvent(reportId, 'inference_done', 'Generating test prompts...')
-
-      // Idempotency: if probes already exist from a previous attempt, skip generation
+      // Idempotency: probes already inserted from a previous attempt
       const existing = await getProbesByReport(reportId)
-      const platformCount = 5
       if (existing.length > 0) {
-        const probeCount = existing.length / 5
-        await emitEvent(reportId, 'probes_start', `Running ${probeCount} prompts across ${platformCount} AI platforms...`)
-        return
+        const report = await getReport(reportId)
+        const probeCount = existing.filter(p => p.platform === 'openai').length
+        await emitEvent(reportId, 'probes_start', `Running ${probeCount} prompts across 4 platforms...`)
+        return report!.inference_json!
       }
 
-      const generated = await generateProbes(inference, inference.icp_personas)
-      const platforms = ['openai', 'anthropic', 'perplexity', 'google', 'openai_search'] as const
+      const { inference: inf, probes } = await inferAndGenerateProbes(crawlResult)
 
-      const rows = generated.flatMap((p) =>
-        platforms.map((platform) => ({
-          report_id: reportId,
-          prompt_text: p.prompt_text,
-          prompt_type: p.prompt_type,
-          platform,
-          response_text: null,
-          parsed_json: null,
-          citations: [] as string[],
-          latency_ms: null,
-          status: 'pending' as const,
-        }))
+      await updateReport(reportId, {
+        company_name: inf.company_name,
+        category: inf.category,
+        competitors: inf.competitors,
+        inference_json: inf,
+      })
+      await emitEvent(reportId, 'inference_done', `Identified: ${inf.company_name} — ${inf.category}`)
+
+      const platforms = ['openai', 'perplexity', 'anthropic', 'google'] as const
+      const rows = probes.flatMap((p) =>
+        platforms
+          .map((platform) => ({
+            report_id: reportId,
+            prompt_text: p.prompt_text,
+            prompt_type: p.prompt_type,
+            platform,
+            response_text: null,
+            parsed_json: null,
+            citations: [] as string[],
+            latency_ms: null,
+            status: 'pending' as const,
+          }))
       )
-
       await insertProbes(rows)
 
-      await emitEvent(
-        reportId,
-        'probes_start',
-        `Running ${generated.length} prompts across ${platformCount} AI platforms...`
-      )
+      await emitEvent(reportId, 'probes_start', `Running ${probes.length} prompts across 4 platforms...`)
+      return inf
     })
 
-    // Step 5: Run all 4 platforms in parallel
-    // ChatGPT and Gemini use BD webhooks when BRIGHTDATA_WEBHOOK_URL is set (production).
-    // Without it they fall back to polling (local dev).
-    const webhookBase = process.env.BRIGHTDATA_WEBHOOK_URL
-
+    // Step 5: Run all 3 platforms in parallel
     await Promise.all([
 
-      // ---- ChatGPT ----
+      // ---- ChatGPT (parametric) ----
       (async () => {
-        if (process.env.CHATGPT_PROVIDER === 'api') {
-          await step.run('probe-openai', async () => {
-            const probes = await getProbesByPlatform(reportId, 'openai')
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              let done = 0
-              await probeOpenAIDirect(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
-            } finally { stop() }
-          })
-        } else if (webhookBase) {
-          // Webhook mode: fire-and-forget to BD, wait for callback event
-          await step.run('probe-openai-submit', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
-            if (probes.length === 0) return
-            await submitOpenAIProbes(probes, webhookBase, reportId)
-            const total = (await getProbesByPlatform(reportId, 'openai')).length
-            await emitEvent(reportId, 'probe_progress', `ChatGPT: 0 of ${total} responses received`)
-          })
-          await step.waitForEvent('probe-openai-wait', {
-            event: 'probes/openai-complete',
-            timeout: '15m',
-            match: 'data.reportId',
-          })
-          await step.run('probe-openai-done', async () => {
-            const probes = await getProbesByPlatform(reportId, 'openai')
-            // Mark any still-pending probes as failed (webhook timeout)
-            await Promise.all(
-              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
-            )
-            const done = probes.filter(p => p.status === 'complete').length
-            const total = probes.length
-            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
-            console.log(`[ChatGPT] ${done}/${total} complete`)
-          })
-        } else {
-          // Polling fallback (local dev — no public webhook URL)
-          await step.run('probe-openai', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'openai')).filter(p => p.status === 'pending')
-            const total = (await getProbesByPlatform(reportId, 'openai')).length
-            let done = total - probes.length
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              await probeOpenAI(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${total} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${total} responses received`)
-            } finally { stop() }
-          })
-        }
+        await step.run('probe-openai', async () => {
+          const probes = await getProbesByPlatform(reportId, 'openai')
+          const { signal, stop } = startCancellationWatch(reportId)
+          try {
+            let done = 0
+            await probeOpenAIDirect(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `ChatGPT: ${done} of ${probes.length} responses received`)
+              }
+            }, signal)
+            await emitEvent(reportId, 'probe_batch_done', `ChatGPT: all ${probes.length} responses received`)
+          } finally { stop() }
+        })
+        await step.run('parse-openai', async () => {
+          const probes = await getProbesByPlatform(reportId, 'openai')
+          const report = await getReport(reportId)
+          await parseProbeResponses(probes, inference, report?.url ?? '')
+        })
+      })(),
+
+      // ---- Perplexity (web-augmented, with citations) ----
+      (async () => {
+        await step.run('probe-perplexity', async () => {
+          const probes = await getProbesByPlatform(reportId, 'perplexity')
+          const { signal, stop } = startCancellationWatch(reportId)
+          try {
+            let done = 0
+            await probePerplexity(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `Perplexity: ${done} of ${probes.length} responses received`)
+              }
+            }, signal)
+            await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
+          } finally { stop() }
+        })
+        await step.run('parse-perplexity', async () => {
+          const probes = await getProbesByPlatform(reportId, 'perplexity')
+          const report = await getReport(reportId)
+          await parseProbeResponses(probes, inference, report?.url ?? '')
+        })
       })(),
 
       // ---- Anthropic ----
-      step.run('probe-anthropic', async () => {
-        const probes = await getProbesByPlatform(reportId, 'anthropic')
-        const { signal, stop } = startCancellationWatch(reportId)
-        try {
-          let done = 0
-          await probeAnthropic(probes, async (id, u) => {
-            await updateProbe(id, u)
-            if (u.status === 'complete' || u.status === 'failed') {
-              done++
-              await emitEvent(reportId, 'probe_progress', `Claude: ${done} of ${probes.length} responses received`)
-            }
-          }, signal)
-          await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
-        } finally { stop() }
-      }),
-
-      // ---- Perplexity ----
-      step.run('probe-perplexity', async () => {
-        if (!process.env.PERPLEXITY_API_KEY && !process.env.BRIGHTDATA_API_KEY) {
-          await emitEvent(reportId, 'probe_batch_done', 'Perplexity: skipped (no API key)')
-          return
-        }
-        const probes = await getProbesByPlatform(reportId, 'perplexity')
-        const { signal, stop } = startCancellationWatch(reportId)
-        try {
-          let done = 0
-          await probePerplexity(probes, async (id, u) => {
-            await updateProbe(id, u)
-            if (u.status === 'complete' || u.status === 'failed') {
-              done++
-              await emitEvent(reportId, 'probe_progress', `Perplexity: ${done} of ${probes.length} responses received`)
-            }
-          }, signal)
-          await emitEvent(reportId, 'probe_batch_done', `Perplexity: all ${probes.length} responses received`)
-        } finally { stop() }
-      }),
+      (async () => {
+        await step.run('probe-anthropic', async () => {
+          const probes = await getProbesByPlatform(reportId, 'anthropic')
+          const { signal, stop } = startCancellationWatch(reportId)
+          try {
+            let done = 0
+            await probeAnthropic(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `Claude: ${done} of ${probes.length} responses received`)
+              }
+            }, signal)
+            await emitEvent(reportId, 'probe_batch_done', `Claude: all ${probes.length} responses received`)
+          } finally { stop() }
+        })
+        await step.run('parse-anthropic', async () => {
+          await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
+          const probes = await getProbesByPlatform(reportId, 'anthropic')
+          const report = await getReport(reportId)
+          await parseProbeResponses(probes, inference, report?.url ?? '')
+        })
+      })(),
 
       // ---- Gemini ----
       (async () => {
-        if (process.env.GEMINI_PROVIDER === 'api') {
-          await step.run('probe-google', async () => {
-            const probes = await getProbesByPlatform(reportId, 'google')
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              let done = 0
-              await probeGoogleDirect(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
-            } finally { stop() }
-          })
-        } else if (webhookBase) {
-          // Webhook mode
-          await step.run('probe-google-submit', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
-            if (probes.length === 0) return
-            await submitGoogleProbes(probes, webhookBase, reportId)
-            const total = (await getProbesByPlatform(reportId, 'google')).length
-            await emitEvent(reportId, 'probe_progress', `Gemini: 0 of ${total} responses received`)
-          })
-          await step.waitForEvent('probe-google-wait', {
-            event: 'probes/google-complete',
-            timeout: '15m',
-            match: 'data.reportId',
-          })
-          await step.run('probe-google-done', async () => {
-            const probes = await getProbesByPlatform(reportId, 'google')
-            await Promise.all(
-              probes.filter(p => p.status === 'pending').map(p => updateProbe(p.id, { status: 'failed' }))
-            )
-            const done = probes.filter(p => p.status === 'complete').length
-            const total = probes.length
-            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
-            console.log(`[Gemini] ${done}/${total} complete`)
-          })
-        } else {
-          // Polling fallback (local dev)
-          await step.run('probe-google', async () => {
-            const probes = (await getProbesByPlatform(reportId, 'google')).filter(p => p.status === 'pending')
-            const total = (await getProbesByPlatform(reportId, 'google')).length
-            let done = total - probes.length
-            const { signal, stop } = startCancellationWatch(reportId)
-            try {
-              await probeGoogle(probes, async (id, u) => {
-                await updateProbe(id, u)
-                if (u.status === 'complete' || u.status === 'failed') {
-                  done++
-                  await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${total} responses received`)
-                }
-              }, signal)
-              await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${total} responses received`)
-            } finally { stop() }
-          })
-        }
+        await step.run('probe-google', async () => {
+          const probes = await getProbesByPlatform(reportId, 'google')
+          const { signal, stop } = startCancellationWatch(reportId)
+          try {
+            let done = 0
+            await probeGoogleDirect(probes, async (id, u) => {
+              await updateProbe(id, u)
+              if (u.status === 'complete' || u.status === 'failed') {
+                done++
+                await emitEvent(reportId, 'probe_progress', `Gemini: ${done} of ${probes.length} responses received`)
+              }
+            }, signal)
+            await emitEvent(reportId, 'probe_batch_done', `Gemini: all ${probes.length} responses received`)
+          } finally { stop() }
+        })
+        await step.run('parse-google', async () => {
+          await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
+          const probes = await getProbesByPlatform(reportId, 'google')
+          const report = await getReport(reportId)
+          await parseProbeResponses(probes, inference, report?.url ?? '')
+        })
       })(),
-
-      // ---- OpenAI with web search ----
-      step.run('probe-openai-search', async () => {
-        const probes = await getProbesByPlatform(reportId, 'openai_search')
-        const { signal, stop } = startCancellationWatch(reportId)
-        try {
-          let done = 0
-          await probeOpenAISearch(probes, async (id, u) => {
-            await updateProbe(id, u)
-            if (u.status === 'complete' || u.status === 'failed') {
-              done++
-              await emitEvent(reportId, 'probe_progress', `ChatGPT Search: ${done} of ${probes.length} responses received`)
-            }
-          }, signal)
-          await emitEvent(reportId, 'probe_batch_done', `ChatGPT Search: all ${probes.length} responses received`)
-        } finally { stop() }
-      }),
 
     ])
 
-    // Step 5.5: Retry failed probes once
+    // Step 5.5: Retry failed probes once (disabled)
     await step.run('probe-retry', async () => {
+      return
       const allProbes = await getProbesByReport(reportId)
       const failed = allProbes.filter((p) => p.status === 'failed')
       if (failed.length === 0) {
@@ -344,21 +236,24 @@ export const runAnalysis = inngest.createFunction(
         ;(byPlatform[probe.platform] ??= []).push(probe)
       }
 
+      // Cap retries per platform — if many failed it's likely systemic and retrying
+      // all of them just delays completion without improving outcomes.
+      const MAX_RETRY_PER_PLATFORM = 3
+      for (const platform of Object.keys(byPlatform)) {
+        byPlatform[platform] = byPlatform[platform].slice(0, MAX_RETRY_PER_PLATFORM)
+      }
+
       const retryResults: Record<string, number> = {}
       const onResult: OnProbeResult = async (id, u) => {
         await updateProbe(id, u)
         if (u.status === 'complete') retryResults[id] = 1
       }
 
-      // BD platforms (openai, google) are retried via the pending-filter mechanism
-      // in their own steps — retrying them here would cause duplicate BD sessions.
-      // When using direct API providers, retry them here like anthropic/perplexity.
       await Promise.allSettled([
-        byPlatform['anthropic']  && probeAnthropic(byPlatform['anthropic'], onResult),
-        byPlatform['perplexity'] && probePerplexity(byPlatform['perplexity'], onResult),
-        byPlatform['openai']        && process.env.CHATGPT_PROVIDER === 'api' && probeOpenAIDirect(byPlatform['openai'], onResult),
-        byPlatform['openai_search'] && probeOpenAISearch(byPlatform['openai_search'], onResult),
-        byPlatform['google']     && process.env.GEMINI_PROVIDER === 'api'  && probeGoogleDirect(byPlatform['google'], onResult),
+        byPlatform['anthropic']     && probeAnthropic(byPlatform['anthropic'], onResult),
+        byPlatform['openai']        && probeOpenAIDirect(byPlatform['openai'], onResult),
+        byPlatform['perplexity']    && probePerplexity(byPlatform['perplexity'], onResult),
+        byPlatform['google']        && probeGoogleDirect(byPlatform['google'], onResult),
       ].filter(Boolean))
 
       const recovered = Object.keys(retryResults).length
@@ -370,12 +265,15 @@ export const runAnalysis = inngest.createFunction(
       }
     })
 
-    // Step 6: Parse all responses
+    // Step 6: Parse any remaining unparsed probes (disabled)
     await step.run('parse-responses', async () => {
-      await emitEvent(reportId, 'probe_batch_done', 'Parsing responses...')
+      return
       const allProbes = await getProbesByReport(reportId)
-      const report = await getReport(reportId)
-      await parseProbeResponses(allProbes, inference, report?.url ?? '')
+      const unparsed = allProbes.filter(p => p.status === 'complete' && !p.parsed_json)
+      if (unparsed.length > 0) {
+        const report = await getReport(reportId)
+        await parseProbeResponses(unparsed, inference, report?.url ?? '')
+      }
       await emitEvent(reportId, 'scoring_done', 'Responses parsed — ready for scoring')
     })
 
@@ -411,23 +309,10 @@ export const runAnalysis = inngest.createFunction(
       return updatedInference
     })
 
-    // Step 6.5c: Generate per-platform summaries (non-fatal — failure skips summaries, not scoring)
-    await step.run('platform-summaries', async () => {
-      try {
-        const allProbes = await getProbesByReport(reportId)
-        const summaries = await generatePlatformSummaries(allProbes, inference.company_name)
-        if (Object.keys(summaries).length > 0) {
-          await updateReport(reportId, {
-            inference_json: { ...inference, platform_summaries: summaries },
-          })
-        }
-      } catch (err) {
-        console.error('[platform-summaries] failed, skipping:', err instanceof Error ? err.message : err)
-      }
-    })
-
-    // Step 7: Score all 4 categories
-    const scores = await step.run('score', async () => {
+    // Steps 6.5c + 7 + 7b: Scoring, platform summaries, and source classification run in parallel.
+    // Extracted to variables first — Turbopack/SWC chokes on complex inline
+    // async functions passed directly into Promise.all([...]).
+    const scoreStep = step.run('score', async () => {
       await emitEvent(reportId, 'scoring_done', 'Scoring your AI visibility...')
       const allProbes = await getProbesByReport(reportId)
       const report = await getReport(reportId)
@@ -438,7 +323,7 @@ export const runAnalysis = inngest.createFunction(
       const [catResult, retResult, entResult, spResult] = await Promise.all([
         Promise.resolve(scoreCategoryAssociation(allProbes, inference.competitors)),
         Promise.resolve(scoreRetrieval(allProbes, brandDomain)),
-        scoreEntity(inference, '', allProbes), // homepage HTML not stored; schema check skipped for now
+        Promise.resolve(scoreEntity(allProbes)),
         scoreSocialProof(inference),
       ])
 
@@ -461,26 +346,58 @@ export const runAnalysis = inngest.createFunction(
       return scored
     })
 
-    // Step 8: Generate recommendations for each category
+    const summaryStep = step.run('platform-summaries', async () => {
+      try {
+        const allProbes = await getProbesByReport(reportId)
+        const perceptions = await generatePlatformPerceptions(allProbes, inference.company_name)
+        if (Object.keys(perceptions).length > 0) {
+          const summaries = Object.fromEntries(
+            Object.entries(perceptions).map(([k, v]) => [k, v.summary])
+          )
+          await updateReport(reportId, {
+            inference_json: {
+              ...inference,
+              platform_summaries: summaries,
+              platform_perceptions: perceptions,
+            },
+          })
+        }
+      } catch (err) {
+        console.error('[platform-summaries] failed, skipping:', err instanceof Error ? err.message : err)
+      }
+    })
+
+    const sourceGapStep = step.run('classify-sources', async () => {
+      const allProbes = await getProbesByReport(reportId)
+      const reportData = await getReport(reportId)
+      const ownDomain = (() => { try { return new URL(reportData?.url ?? '').hostname.replace(/^www\./, '') } catch { return '' } })()
+      const result = await computeSourceGaps(allProbes, inference.competitors, ownDomain, inference.company_name, inference.category, inference.canonical_description, inference.primary_use_case, inference.target_customer)
+      // Store full result so the report page can use Haiku classifications without re-running
+      await updateReport(reportId, { inference_json: { ...inference, source_gap: result } })
+      return result.citationSummary
+    })
+
+    const [scores, , citationSummary] = await Promise.all([scoreStep, summaryStep, sourceGapStep])
+
+    // Step 8: Generate recommendations — single Sonnet call with all scores
     await step.run('recommendations', async () => {
       await emitEvent(reportId, 'scoring_done', 'Generating recommendations...')
 
-      // Delete any existing recommendations first so retries don't produce duplicates
       await deleteRecommendationsByReport(reportId)
-
-      // Re-fetch scores from DB to get their actual UUIDs
       const dbScores = await getScoresByReport(reportId)
 
-      // Sequential — concurrent Anthropic calls hit the rate limit and loop-retry the step
-      for (const score of dbScores) {
-        try {
-          const recs = await generateRecommendations(score, inference)
-          await insertRecommendations(
-            recs.map((r) => ({ ...r, score_id: score.id, report_id: reportId }))
-          )
-        } catch (err) {
-          console.error(`[recommendations] failed for ${score.category}, skipping:`, err instanceof Error ? err.message : err)
-        }
+      try {
+        const recs = await generateRecommendations(dbScores, inference, citationSummary)
+        // Assign each rec to the score row matching its category
+        const scoreByCategory = Object.fromEntries(dbScores.map((s) => [s.category, s]))
+        await insertRecommendations(
+          recs.map((r) => {
+            const score = scoreByCategory[r.type] ?? dbScores[0]
+            return { ...r, effort: null, score_id: score.id, report_id: reportId }
+          })
+        )
+      } catch (err) {
+        console.error('[recommendations] failed:', err instanceof Error ? err.message : err)
       }
 
       await updateReport(reportId, { status: 'complete', completed_at: new Date().toISOString() })

@@ -9,9 +9,16 @@ function newGame() {
 }
 
 export default function SudokuGame() {
-  const [{ puzzle, solution }, setGame] = useState(newGame)
+  const [game, setGame] = useState<{ puzzle: string; solution: string } | null>(null)
   const [inputs, setInputs] = useState<Record<number, string>>({})
   const [selected, setSelected] = useState<number | null>(null)
+
+  useEffect(() => {
+    setGame(newGame())
+  }, [])
+
+  const puzzle = game?.puzzle ?? '-'.repeat(81)
+  const solution = game?.solution ?? '-'.repeat(81)
 
   // sudoku-gen uses '-' for empty cells
   const given = useMemo(

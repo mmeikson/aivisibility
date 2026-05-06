@@ -1,15 +1,15 @@
 // Full pipeline smoke test: crawl → inference → probes → parse
 // Run with: npx tsx scripts/test-pipeline.ts [url] [platform] [probe-limit]
 //   url:         defaults to https://rentredi.com
-//   platform:    openai | anthropic | google | perplexity | all (default: all)
+//   platform:    openai | anthropic | google | all (default: all)
 //   probe-limit: max probes per platform, default 5 (use 0 for all)
 
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 import { crawlSite } from '../lib/crawler'
-import { inferBusinessContext, generateProbes } from '../lib/inference'
-import { probeOpenAI, probeAnthropic, probePerplexity, probeGoogle } from '../lib/inngest/probe-platform'
+import { inferAndGenerateProbes } from '../lib/inference'
+import { probeOpenAIDirect, probeAnthropic, probeGoogleDirect } from '../lib/inngest/probe-platform'
 import type { Probe, ParsedProbeResult } from '../lib/db/types'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -26,20 +26,19 @@ async function main() {
   const site = await crawlSite(url)
   console.log(`   ${site.pages.length} pages crawled\n`)
 
-  console.log('2. Running business understanding...')
-  const inference = await inferBusinessContext(site)
+  console.log('2. Running business understanding + probe generation...')
+  const { inference, probes: allGenerated } = await inferAndGenerateProbes(site)
   console.log(`   ${inference.company_name} — ${inference.category}`)
   console.log(`   Competitors: ${inference.competitors.join(', ')}\n`)
 
-  console.log('3. Generating probes...')
-  const allGenerated = await generateProbes(inference)
+  console.log('3. Selecting probes...')
   const generated = probeLimit < Infinity ? allGenerated.slice(0, probeLimit) : allGenerated
   console.log(`   ${generated.length} probes selected (of ${allGenerated.length} total)\n`)
 
   // Build in-memory probe records
   const platformsToRun = platform === 'all'
     ? (['openai', 'anthropic', 'google'] as const)
-    : [platform as 'openai' | 'anthropic' | 'perplexity' | 'google']
+    : [platform as 'openai' | 'anthropic' | 'google']
 
   let idCounter = 0
   const store = new Map<string, Probe>()
@@ -73,10 +72,9 @@ async function main() {
     console.log(`4. Running ${platformProbes.length} probes on ${plt}...`)
     const start = Date.now()
 
-    if (plt === 'openai') await probeOpenAI(platformProbes, onResult)
+    if (plt === 'openai') await probeOpenAIDirect(platformProbes, onResult)
     else if (plt === 'anthropic') await probeAnthropic(platformProbes, onResult)
-    else if (plt === 'perplexity') await probePerplexity(platformProbes, onResult)
-    else if (plt === 'google') await probeGoogle(platformProbes, onResult)
+    else if (plt === 'google') await probeGoogleDirect(platformProbes, onResult)
 
     const completed = [...store.values()].filter((p) => p.platform === plt && p.status === 'complete')
     console.log(`   ${completed.length}/${platformProbes.length} succeeded in ${((Date.now() - start) / 1000).toFixed(1)}s\n`)

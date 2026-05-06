@@ -1,210 +1,252 @@
-import type { Probe, PromptType } from '@/lib/db/types'
+import type { Probe } from '@/lib/db/types'
+import { classifyDomainsWithHaiku } from './classify-sources'
+import { crawlCitationUrls, crawlDomainHomepages } from './crawl-citations'
 
-function urlsToDomains(urls: string[]): string[] {
-  return [...new Set(urls.flatMap((url) => {
-    try { return [new URL(url).hostname.replace(/^www\./, '')] }
-    catch { return [] }
-  }))]
-}
+export const SOURCE_GAP_VERSION = 7
 
-// Use raw platform citations as the source of truth.
-// parsed_json.cited_domains is derived from probe.citations during parsing,
-// but may be missing for probes where parsing failed or was done before
-// the cited_urls field was added.
+const STRIP_DOMAINS = new Set([
+  'vertexaisearch.cloud.google.com',
+])
+
 function probeUrls(probe: Probe): string[] {
-  if (probe.citations.length > 0) return probe.citations
-  return probe.parsed_json?.cited_urls ?? []
+  const raw = probe.citations.length > 0 ? probe.citations : (probe.parsed_json?.cited_urls ?? [])
+  return raw.filter((url) => {
+    try {
+      const host = new URL(url).hostname
+      return !STRIP_DOMAINS.has(host)
+    } catch { return false }
+  })
 }
 
-export type ClusterKey = 'discovery' | 'comparison' | 'workflow'
+export type SourceType = 'brand' | 'review' | 'editorial' | 'unknown'
 
-export interface ClusterConfig {
-  key: ClusterKey
-  label: string
-  promptTypes: PromptType[]
+export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
+  brand:     'Brand',
+  review:    'Review',
+  editorial: 'Editorial',
+  unknown:   'Unknown',
+}
+
+export const SOURCE_TYPE_COLOR: Record<SourceType, string> = {
+  brand:     '#F87171',
+  review:    '#34D399',
+  editorial: '#94A3B8',
+  unknown:   '#D1D5DB',
 }
 
 export interface DomainEntry {
   domain: string
+  sourceType: SourceType
   citedInProbeCount: number
-  totalProbesInCluster: number
-  citationRate: number
-  brandMentionedCount: number
-  competitorsMentioned: string[]
-  isGap: boolean
-  isCompetitorOwned: boolean  // domain belongs to a known competitor — not actionable for listing
-  sampleUrls: string[]        // up to 5 actual cited URLs for this domain in this cluster
-  platformCount: number
-  platformNames: string[]
-  isHighConfidence: boolean   // platformCount >= 2
-}
-
-export type DeltaClass = 'durable' | 'web_only' | 'parametric_only' | 'absent'
-
-export interface ClusterDelta {
-  parametricMentionRate: number
-  webMentionRate: number
-  deltaClass: DeltaClass
-  parametricCount: number
-  webCount: number
-}
-
-export interface ClusterAnalysis {
-  cluster: ClusterConfig
   totalProbes: number
-  domains: DomainEntry[]
-  hasData: boolean
-  gapCount: number
-  delta: ClusterDelta | null
+  citationRate: number
+  platformNames: string[]
+  brandMentioned: boolean | null
+  isGap: boolean
+  sampleUrls: string[]
+}
+
+export interface CitedDomainSummary {
+  domain: string
+  sourceType: SourceType
+  citedInProbeCount: number
+  brandMentioned: boolean | null
+  sampleUrls: string[]
+  homepageSnippet?: string
+}
+
+export interface CitationSummary {
+  citedDomains: CitedDomainSummary[]
 }
 
 export interface SourceGapResult {
-  clusters: ClusterAnalysis[]
+  byType: Record<SourceType, DomainEntry[]>
+  totalProbes: number
   hasAnyData: boolean
+  citationSummary: CitationSummary
+  version?: number
 }
 
-const CLUSTERS: ClusterConfig[] = [
-  { key: 'discovery',  label: 'Discovery Queries',  promptTypes: ['discovery', 'ranking'] },
-  { key: 'comparison', label: 'Comparison Queries',  promptTypes: ['comparison', 'pairwise'] },
-  { key: 'workflow',   label: 'Workflow Queries',    promptTypes: ['job_to_be_done'] },
-]
+export async function computeSourceGaps(
+  probes: Probe[],
+  competitors: string[] = [],
+  ownDomain = '',
+  brandName = '',
+  category = '',
+  brandDescription = '',
+  primaryUseCase = '',
+  targetCustomer = '',
+): Promise<SourceGapResult> {
+  const empty: SourceGapResult = {
+    byType: { brand: [], review: [], editorial: [], unknown: [] },
+    totalProbes: 0,
+    hasAnyData: false,
+    citationSummary: { citedDomains: [] },
+  }
 
-function classifyDelta(parametric: number, web: number): DeltaClass {
-  if (parametric < 0.4 && web < 0.4) return 'absent'
-  if (web - parametric > 0.2) return 'web_only'
-  if (parametric - web > 0.2) return 'parametric_only'
-  return 'durable'
-}
+  // Only unbranded probes — branded queries skew citations toward own/competitor pages
+  const UNBRANDED_TYPES = new Set(['discovery', 'job_to_be_done', 'ranking', 'comparison'])
+  const eligibleProbes = probes.filter(
+    (p) => UNBRANDED_TYPES.has(p.prompt_type) && probeUrls(p).length > 0
+  )
+  if (eligibleProbes.length === 0) return empty
 
-// Returns true if a domain appears to be owned by a known competitor.
-// Strips TLD and common prefixes, then checks for substring overlap.
-function detectCompetitorDomain(domain: string, competitors: string[]): boolean {
-  const base = domain.toLowerCase().replace(/^www\./, '').replace(/\.[a-z]{2,}$/, '')
-  return competitors.some((c) => {
-    const name = c.toLowerCase().replace(/[^a-z0-9]/g, '')
-    return base.includes(name) || name.includes(base)
-  })
-}
+  // ── Phase 1: aggregate domain stats ──────────────────────────────────────
 
-export function computeSourceGaps(probes: Probe[], competitors: string[] = []): SourceGapResult {
-  const eligibleProbes = probes.filter((p) => probeUrls(p).length > 0)
+  const domainMap = new Map<string, {
+    probeIds: Set<string>
+    platformNames: Set<string>
+    urlSet: Set<string>
+  }>()
 
-  const clusters: ClusterAnalysis[] = CLUSTERS.map((cluster) => {
-    const clusterProbes = eligibleProbes.filter((p) =>
-      (cluster.promptTypes as string[]).includes(p.prompt_type)
-    )
+  const urlCitationCount = new Map<string, number>()
 
-    // Delta: compare openai (parametric) vs openai_search (web) mention rates
-    const allClusterProbes = probes.filter((p) =>
-      (cluster.promptTypes as string[]).includes(p.prompt_type) && p.parsed_json !== null
-    )
-    const parametricProbes = allClusterProbes.filter((p) => p.platform === 'openai')
-    const webProbes = allClusterProbes.filter((p) => p.platform === 'openai_search')
-    const delta: ClusterDelta | null =
-      parametricProbes.length > 0 && webProbes.length > 0
-        ? (() => {
-            const pr = parametricProbes.filter((p) => p.parsed_json!.was_mentioned).length / parametricProbes.length
-            const wr = webProbes.filter((p) => p.parsed_json!.was_mentioned).length / webProbes.length
-            return {
-              parametricCount: parametricProbes.length,
-              webCount: webProbes.length,
-              parametricMentionRate: pr,
-              webMentionRate: wr,
-              deltaClass: classifyDelta(pr, wr),
-            }
-          })()
-        : null
+  for (const probe of eligibleProbes) {
+    const urls = probeUrls(probe)
+    const seenDomains = new Set<string>()
 
-    if (clusterProbes.length === 0) {
-      return { cluster, totalProbes: 0, domains: [], hasData: false, gapCount: 0, delta }
-    }
-
-    const domainMap = new Map<string, {
-      probeIds: Set<string>
-      platformNames: Set<string>
-      brandCount: number
-      competitorCasing: Map<string, string>
-      urlSet: Set<string>
-    }>()
-
-    for (const probe of clusterProbes) {
-      const urls = probeUrls(probe)
-      const urlsByDomain = new Map<string, string[]>()
-      for (const url of urls) {
-        try {
-          const d = new URL(url).hostname.replace(/^www\./, '')
-          if (!urlsByDomain.has(d)) urlsByDomain.set(d, [])
-          urlsByDomain.get(d)!.push(url)
-        } catch { /* ignore malformed URLs */ }
-      }
-      const domains = new Set(urlsToDomains(urls))
-
-      for (const domain of domains) {
+    for (const url of urls) {
+      try {
+        const domain = new URL(url).hostname.replace(/^www\./, '')
         if (!domainMap.has(domain)) {
-          domainMap.set(domain, { probeIds: new Set(), platformNames: new Set(), brandCount: 0, competitorCasing: new Map(), urlSet: new Set() })
+          domainMap.set(domain, { probeIds: new Set(), platformNames: new Set(), urlSet: new Set() })
         }
         const entry = domainMap.get(domain)!
-        entry.probeIds.add(probe.id)
-        entry.platformNames.add(probe.platform)
-        if (probe.parsed_json!.was_mentioned) entry.brandCount++
-        for (const comp of probe.parsed_json!.competitor_mentions ?? []) {
-          const key = comp.toLowerCase().trim()
-          if (key && !entry.competitorCasing.has(key)) {
-            entry.competitorCasing.set(key, comp.trim())
-          }
+        if (!seenDomains.has(domain)) {
+          entry.probeIds.add(probe.id)
+          seenDomains.add(domain)
         }
-        for (const url of urlsByDomain.get(domain) ?? []) {
-          entry.urlSet.add(url)
+        entry.platformNames.add(probe.platform)
+        entry.urlSet.add(url)
+        urlCitationCount.set(url, (urlCitationCount.get(url) ?? 0) + 1)
+      } catch { /* ignore malformed URL */ }
+    }
+  }
+
+  // ── Phase 2: crawl citation URLs for page text + domain homepages ────────
+
+  const urlsForCrawl = Array.from(urlCitationCount.entries())
+    .map(([url, citationCount]) => ({ url, citationCount }))
+
+  // Sort domains by probe citation count so the cap hits least-cited domains last
+  const allDomains = Array.from(domainMap.entries())
+    .sort((a, b) => b[1].probeIds.size - a[1].probeIds.size)
+    .map(([domain]) => domain)
+
+  const [crawledText, homepageTexts] = brandName
+    ? await Promise.all([
+        crawlCitationUrls(urlsForCrawl),
+        crawlDomainHomepages(allDomains),
+      ])
+    : [new Map<string, string>(), new Map<string, string>()]
+
+  // ── Phase 3: classify domains with Haiku ─────────────────────────────────
+
+  // Software review aggregators are universal across all product/service categories.
+  // Matching is done on the root domain (eTLD+1) so subdomains are covered automatically.
+  const KNOWN_REVIEW_DOMAINS = new Set([
+    'g2.com', 'capterra.com', 'gartner.com', 'trustpilot.com', 'getapp.com',
+    'softwareadvice.com', 'sourceforge.net', 'tekpon.com', 'getapp.co',
+    'peerspot.com', 'crozdesk.com', 'slashdot.org', 'serchen.com',
+  ])
+
+  // Strip subdomain to match root domain (e.g. en.wikipedia.org → wikipedia.org)
+  function rootDomain(d: string): string {
+    const parts = d.split('.')
+    return parts.length > 2 ? parts.slice(-2).join('.') : d
+  }
+
+  const preClassified = new Map<string, { sourceType: SourceType }>()
+  const needsHaiku: Array<{ domain: string; homepageSnippet: string }> = []
+
+  for (const domain of domainMap.keys()) {
+    const root = rootDomain(domain)
+    if (domain === ownDomain || root === rootDomain(ownDomain)) {
+      preClassified.set(domain, { sourceType: 'brand' })
+    } else if (KNOWN_REVIEW_DOMAINS.has(root)) {
+      preClassified.set(domain, { sourceType: 'review' })
+    } else {
+      const snippet = homepageTexts.get(domain)
+      if (snippet) {
+        needsHaiku.push({ domain, homepageSnippet: snippet })
+      }
+      // No snippet → sourceType stays absent; will resolve to 'unknown' below
+    }
+  }
+
+  const haikuClassifications = brandName && needsHaiku.length > 0
+    ? await classifyDomainsWithHaiku(needsHaiku, brandName, ownDomain, category, competitors, brandDescription, primaryUseCase, targetCustomer)
+    : new Map<string, { sourceType: SourceType }>()
+
+  const classifications = new Map<string, { sourceType: SourceType }>([
+    ...preClassified,
+    ...haikuClassifications,
+  ])
+
+  // ── Phase 4: build DomainEntry[] ─────────────────────────────────────────
+
+  const total = eligibleProbes.length
+  const byType: Record<SourceType, DomainEntry[]> = { brand: [], review: [], editorial: [], unknown: [] }
+
+  for (const [domain, acc] of domainMap.entries()) {
+    const citedInProbeCount = acc.probeIds.size
+    const platformNames = Array.from(acc.platformNames)
+    const sampleUrls = Array.from(acc.urlSet).slice(0, 5)
+
+    const sourceType: SourceType = classifications.get(domain)?.sourceType ?? 'unknown'
+
+    // brandMentioned: mechanical keyword search on crawled citation pages
+    let brandMentioned: boolean | null = null
+    const brandLower = brandName.toLowerCase()
+
+    for (const url of acc.urlSet) {
+      const text = crawledText.get(url)
+      if (text !== undefined) {
+        if (brandMentioned === null) brandMentioned = false
+        if (text.toLowerCase().includes(brandLower) || url.toLowerCase().includes(brandLower)) {
+          brandMentioned = true
+          break
         }
       }
     }
 
-    const total = clusterProbes.length
+    const isGap = sourceType !== 'brand' && brandMentioned === false && citedInProbeCount >= 2
 
-    const domainEntries: DomainEntry[] = Array.from(domainMap.entries()).map(([domain, acc]) => {
-      const citedInProbeCount = acc.probeIds.size
-      const competitorsMentioned = Array.from(acc.competitorCasing.values())
-      const platformNames = Array.from(acc.platformNames)
-      const platformCount = platformNames.length
-      const isCompetitorOwned = detectCompetitorDomain(domain, competitors)
-      const isGap =
-        !isCompetitorOwned &&
-        citedInProbeCount >= 2 &&
-        competitorsMentioned.length > 0 &&
-        acc.brandCount === 0
-      return {
-        domain,
-        citedInProbeCount,
-        totalProbesInCluster: total,
-        citationRate: citedInProbeCount / total,
-        brandMentionedCount: acc.brandCount,
-        competitorsMentioned,
-        isGap,
-        isCompetitorOwned,
-        sampleUrls: Array.from(acc.urlSet).slice(0, 5),
-        platformCount,
-        platformNames,
-        isHighConfidence: platformCount >= 2,
-      }
+    byType[sourceType].push({
+      domain,
+      sourceType,
+      citedInProbeCount,
+      totalProbes: total,
+      citationRate: citedInProbeCount / total,
+      platformNames,
+      brandMentioned,
+      isGap,
+      sampleUrls,
     })
+  }
 
-    // High-confidence gaps first, then other gaps, then non-gaps; by citedInProbeCount desc within each group
-    domainEntries.sort((a, b) => {
-      const aScore = a.isGap ? (a.isHighConfidence ? 2 : 1) : 0
-      const bScore = b.isGap ? (b.isHighConfidence ? 2 : 1) : 0
-      if (aScore !== bScore) return bScore - aScore
-      return b.citedInProbeCount - a.citedInProbeCount
-    })
+  for (const entries of Object.values(byType)) {
+    entries.sort((a, b) => b.citedInProbeCount - a.citedInProbeCount)
+  }
 
-    // Show all gaps + top 8 non-gap sources
-    const gaps = domainEntries.filter((d) => d.isGap)
-    const nonGaps = domainEntries.filter((d) => !d.isGap).slice(0, 8)
-    const domains = [...gaps, ...nonGaps]
-    const gapCount = gaps.length
+  // ── citationSummary for recommendations ──────────────────────────────────
+  // Include ALL cited domains — Sonnet will identify competitors inline
+  // and exclude them from action steps rather than relying on pre-classification.
 
-    return { cluster, totalProbes: total, domains, hasData: true, gapCount, delta }
-  })
+  const allEntries = Object.values(byType).flat()
+  const citationSummary: CitationSummary = {
+    citedDomains: allEntries
+      .sort((a, b) => b.citedInProbeCount - a.citedInProbeCount)
+      .map(e => ({
+        domain: e.domain,
+        sourceType: e.sourceType,
+        citedInProbeCount: e.citedInProbeCount,
+        brandMentioned: e.brandMentioned,
+        sampleUrls: e.sampleUrls,
+        homepageSnippet: homepageTexts.get(e.domain),
+      })),
+  }
 
-  const hasAnyData = clusters.some((c) => c.hasData)
-  return { clusters, hasAnyData }
+  const hasAnyData = Object.values(byType).some((arr) => arr.length > 0)
+  return { byType, totalProbes: total, hasAnyData, citationSummary, version: SOURCE_GAP_VERSION }
 }

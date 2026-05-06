@@ -18,6 +18,36 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Retries fn up to maxAttempts on 5xx and 429 errors with appropriate backoff.
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, label = ''): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const status = (err as { status?: number })?.status
+      if (status === 429 && attempt < maxAttempts) {
+        const headers = (err as { headers?: { get?: (k: string) => string | null } }).headers
+        const retryMs = parseInt(headers?.get?.('retry-after-ms') ?? '0') || 1000
+        const delay = retryMs + 200
+        console.warn(`[retry] ${label} attempt ${attempt}/${maxAttempts} got 429, retrying in ${delay}ms`)
+        await sleep(delay)
+        lastErr = err
+        continue
+      }
+      if (status && status >= 500 && status < 600 && attempt < maxAttempts) {
+        const delay = 1000 * attempt
+        console.warn(`[retry] ${label} attempt ${attempt}/${maxAttempts} got ${status}, retrying in ${delay}ms`)
+        await sleep(delay)
+        lastErr = err
+        continue
+      }
+      throw err
+    }
+  }
+  throw lastErr
+}
+
 function timeout(ms: number, label: string): Promise<never> {
   return new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms)
@@ -25,7 +55,7 @@ function timeout(ms: number, label: string): Promise<never> {
 }
 
 // Limits concurrent async tasks to `limit` at a time, with an optional stagger
-// delay between each launch to avoid thundering-herd on BD browser sessions.
+// delay between each launch to avoid thundering-herd effects.
 async function runWithConcurrency<T>(
   items: T[],
   limit: number,
@@ -35,7 +65,6 @@ async function runWithConcurrency<T>(
 ): Promise<void> {
   const queue = [...items.entries()]
   const workers = Array.from({ length: Math.min(limit, items.length) }, async (_, workerIndex) => {
-    // Stagger worker start times
     await sleep(workerIndex * staggerMs)
     while (queue.length > 0) {
       if (signal?.aborted) break
@@ -49,7 +78,6 @@ async function runWithConcurrency<T>(
 }
 
 // Wraps a promise so it rejects immediately when the AbortSignal fires.
-// Used for SDKs that don't natively support AbortSignal (e.g. @google/generative-ai).
 function abortableRequest<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise
   return new Promise<T>((resolve, reject) => {
@@ -63,132 +91,28 @@ function abortableRequest<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   })
 }
 
-// ---- Bright Data shared scraper ----
-// Submits prompts to real AI web interfaces via browser automation.
-// Concurrency is intentionally limited — running too many sessions simultaneously
-// causes BD to return empty responses.
-
-const BD_CHATGPT_ID = 'gd_m7aof0k82r803d5bjm'
-const BD_GEMINI_ID  = 'gd_mbz66arm2mf9cu856y'
-
-const BD_POLL_INTERVAL_MS = 2_000
-const BD_MAX_POLLS = 90 // 3 min max per probe
-
-async function brightDataScrape(
-  datasetId: string,
-  body: unknown,
-  apiKey: string,
-  signal?: AbortSignal
-): Promise<{ text: string; citations: string[] }> {
-  const res = await fetch(
-    `https://api.brightdata.com/datasets/v3/scrape?dataset_id=${datasetId}&format=json`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    }
-  )
-
-  const data = await res.json()
-  const first = Array.isArray(data) ? data[0] : data
-
-  // Prefer markdown for richer display; fall back to plain text
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function bdText(obj: any): string {
-    return obj?.answer_text_markdown?.trim() || obj?.answer_text?.trim() || ''
-  }
-
-  console.log(`[BD] dataset=${datasetId} status=${res.status} answer_text_len=${first?.answer_text?.length ?? 'n/a'}`)
-
-  if (res.ok && bdText(first)) {
-    return {
-      text: bdText(first),
-      citations: (first.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
-    }
-  }
-
-  // Async — poll snapshot
-  const snapshotId: string = first?.snapshot_id
-  if (!snapshotId) throw new Error(`Unexpected BD response: ${JSON.stringify(first).slice(0, 200)}`)
-
-  for (let i = 0; i < BD_MAX_POLLS; i++) {
-    await sleep(BD_POLL_INTERVAL_MS)
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-    const poll = await fetch(
-      `https://api.brightdata.com/datasets/v3/snapshot/${snapshotId}?format=json`,
-      { headers: { Authorization: `Bearer ${apiKey}` }, signal }
-    )
-    if (poll.status === 202) continue
-    const pollData = await poll.json()
-    const result = Array.isArray(pollData) ? pollData[0] : pollData
-    console.log(`[BD] snapshot=${snapshotId} poll_status=${poll.status} answer_text_len=${result?.answer_text?.length ?? 'n/a'}`)
-    const text = bdText(result)
-    if (!text) throw new Error(`BD snapshot ${snapshotId} returned empty response`)
-    return {
-      text,
-      citations: (result.citations ?? []).map((c: { url?: string }) => c.url ?? '').filter(Boolean),
-    }
-  }
-
-  throw new Error(`BD snapshot ${snapshotId} timed out`)
-}
-
-// ---- OpenAI via Bright Data (real ChatGPT browser session) ----
-// BD can only sustain 1 concurrent session reliably — multiple simultaneous
-// sessions cause the extras to return empty. Probes run strictly sequentially.
-// Inngest will retry the step if it times out; already-completed probes are
-// filtered out before calling these functions so retries make forward progress.
-
-const BD_CONCURRENCY = 2
-const BD_STAGGER_MS  = 8_000
-const BD_TIMEOUT_MS  = 90_000
-
-export async function probeOpenAI(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for ChatGPT probes')
-
-  console.log(`[ChatGPT] BD concurrency=${BD_CONCURRENCY} stagger=${BD_STAGGER_MS}ms probes=${probes.length}`)
-
-  await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
-    const start = Date.now()
-    try {
-      const { text, citations } = await Promise.race([
-        brightDataScrape(
-          BD_CHATGPT_ID,
-          [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-          bdKey,
-          signal
-        ),
-        timeout(BD_TIMEOUT_MS, `ChatGPT probe ${probe.id}`),
-      ])
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.warn(`[ChatGPT] probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
-    }
-  }, signal)
-}
-
 // ---- Anthropic (claude-sonnet-4-6, no web search) ----
 // Tests parametric knowledge from training data — what Claude "knows" about a brand.
 
-const ANTHROPIC_CONCURRENCY = 5
-const ANTHROPIC_STAGGER_MS  = 500
+const ANTHROPIC_CONCURRENCY = 8
+const ANTHROPIC_STAGGER_MS  = 200
+const ANTHROPIC_PROBE_TIMEOUT_MS = 45_000
 
 export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
   await runWithConcurrency(probes, ANTHROPIC_CONCURRENCY, ANTHROPIC_STAGGER_MS, async (probe) => {
     const start = Date.now()
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(new Error(`Probe timeout after ${ANTHROPIC_PROBE_TIMEOUT_MS}ms`)), ANTHROPIC_PROBE_TIMEOUT_MS)
+    if (signal) signal.addEventListener('abort', () => ac.abort(signal.reason), { once: true })
     try {
       const res = await client.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
         system: `You are a helpful assistant. Today's date is ${new Date().toISOString().slice(0, 10)}. The user is located in the United States. When recommending products, services, or companies, default to US-based options and US pricing unless otherwise specified.`,
         messages: [{ role: 'user', content: probe.prompt_text }],
-      }, { signal })
+      }, { signal: ac.signal })
       const text = res.content
         .filter((block) => block.type === 'text')
         .map((block) => (block.type === 'text' ? block.text : ''))
@@ -199,73 +123,19 @@ export async function probeAnthropic(probes: Probe[], onResult: OnProbeResult, s
       if (signal?.aborted) return
       console.error(`Anthropic probe failed (${probe.id}):`, err)
       await onResult(probe.id, { status: 'failed' })
+    } finally {
+      clearTimeout(timer)
     }
   }, signal)
 }
 
-// ---- Perplexity via sonar-pro API ----
-// Uses the same model as the Perplexity Pro web experience.
-
-const PERPLEXITY_CONCURRENCY = 3
-const PERPLEXITY_STAGGER_MS  = 200
-
-export async function probePerplexity(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const client = new OpenAI({ apiKey: process.env.PERPLEXITY_API_KEY, baseURL: 'https://api.perplexity.ai' })
-  const date = new Date().toISOString().slice(0, 10)
-
-  await runWithConcurrency(probes, PERPLEXITY_CONCURRENCY, PERPLEXITY_STAGGER_MS, async (probe) => {
-    const start = Date.now()
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (client.chat.completions.create as any)({
-        model: 'sonar-pro',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.`,
-          },
-          { role: 'user', content: probe.prompt_text },
-        ],
-        max_tokens: 2048,
-        temperature: 0,
-      }, { signal })
-      const text = res.choices?.[0]?.message?.content ?? ''
-      if (!text.trim()) throw new Error('Perplexity returned empty response')
-      await onResult(probe.id, {
-        response_text: text,
-        citations: res.citations ?? [],
-        latency_ms: Date.now() - start,
-        status: 'complete',
-      })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.error(`Perplexity probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
-    }
-  }, signal)
-}
-
-// ---- OpenAI direct API (gpt-5.4) ----
-// Fast parallel execution via Chat Completions. No web search; temperature 0.3.
+// ---- OpenAI direct API (gpt-5.4, no web search) ----
 
 export async function probeOpenAIDirect(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const date = new Date().toISOString().slice(0, 10)
-  const CONCURRENCY = 3
-  const queue = [...probes]
-  const workers = Array.from({ length: CONCURRENCY }, async (_, i) => {
-    if (i > 0) await sleep(i * 300) // stagger worker starts
-    while (queue.length > 0) {
-      const probe = queue.shift()
-      if (!probe) break
-      if (signal?.aborted) return
-      const start = Date.now()
-      try {
-        const res = await client.chat.completions.create({
-          model: 'gpt-5.4',
-          temperature: 0.3,
-          messages: [
-            { role: 'system', content: `You are a careful, analytical assistant. Your goal is to produce responses that closely resemble high-quality ChatGPT outputs.
+
+  const systemPrompt = `You are a careful, analytical assistant. Your goal is to produce responses that closely resemble high-quality ChatGPT outputs.
 
 General behavior:
 - Interpret the user's intent and adjust the response style accordingly (informational, analytical, recommendation, etc.).
@@ -301,63 +171,88 @@ Final check before answering:
 - Remove filler or content that could apply to almost any situation.
 - Ensure any included examples or brands are relevant and add value.
 
-Today's date is ${date}. The user is located in the United States.` },
-            { role: 'user', content: probe.prompt_text },
-          ],
-        }, { signal })
-        const text = res.choices?.[0]?.message?.content ?? ''
-        if (!text.trim()) throw new Error('Empty response')
-        await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
-      } catch (err) {
-        if (signal?.aborted) return
-        console.error(`[ChatGPT-API] probe failed (${probe.id}):`, err)
-        await onResult(probe.id, { status: 'failed' })
-      }
-      await sleep(300 + Math.random() * 300) // 300–600ms between requests per worker
-    }
-  })
-  await Promise.all(workers)
-}
+Today's date is ${date}. The user is located in the United States.`
 
-// ---- OpenAI with web search (gpt-4o-search-preview) ----
-// Web search is built into the model — no tools param needed.
-// Citations come from message.annotations as url_citation objects.
+  console.log(`[ChatGPT-API] full parallel probes=${probes.length}`)
 
-export async function probeOpenAISearch(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  const date = new Date().toISOString().slice(0, 10)
-  await Promise.all(probes.map(async (probe) => {
+  const runProbe = async (probe: Probe) => {
     if (signal?.aborted) return
     const start = Date.now()
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await (client.chat.completions.create as any)({
-        model: 'gpt-4o-search-preview',
+      const doCreate = () => client.chat.completions.create({
+        model: 'gpt-5.4',
+        temperature: 0.3,
         messages: [
-          {
-            role: 'system',
-            content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States. When recommending products, services, or companies, default to US-based options unless otherwise specified.`,
-          },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: probe.prompt_text },
         ],
       }, { signal })
-      const message = res.choices?.[0]?.message
-      const text: string = message?.content ?? ''
+      const res = await withRetry(doCreate, 3, `ChatGPT-API ${probe.id}`)
+      const text = res.choices?.[0]?.message?.content ?? ''
       if (!text.trim()) throw new Error('Empty response')
+      await onResult(probe.id, { response_text: text, citations: [], latency_ms: Date.now() - start, status: 'complete' })
+    } catch (err) {
+      if (signal?.aborted) return
+      console.error(`[ChatGPT-API] probe failed (${probe.id}):`, err)
+      await onResult(probe.id, { status: 'failed' })
+    }
+  }
+
+  await Promise.all(probes.map(runProbe))
+}
+
+// ---- Perplexity (sonar-pro, web-augmented with citations) ----
+// Citations come back as a top-level `citations` array on the response object.
+
+const PERPLEXITY_CONCURRENCY = 5
+const PERPLEXITY_STAGGER_MS  = 300
+const PERPLEXITY_PROBE_TIMEOUT_MS = 45_000
+
+export async function probePerplexity(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
+  const client = new OpenAI({
+    apiKey: process.env.PERPLEXITY_API_KEY,
+    baseURL: 'https://api.perplexity.ai',
+  })
+  const date = new Date().toISOString().slice(0, 10)
+
+  console.log(`[Perplexity] sonar-pro concurrency=${PERPLEXITY_CONCURRENCY} probes=${probes.length}`)
+
+  await runWithConcurrency(probes, PERPLEXITY_CONCURRENCY, PERPLEXITY_STAGGER_MS, async (probe) => {
+    if (signal?.aborted) return
+    const start = Date.now()
+    const ac = new AbortController()
+    const timer = setTimeout(() => ac.abort(new Error(`Probe timeout after ${PERPLEXITY_PROBE_TIMEOUT_MS}ms`)), PERPLEXITY_PROBE_TIMEOUT_MS)
+    if (signal) signal.addEventListener('abort', () => ac.abort(signal.reason), { once: true })
+    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const citations: string[] = (message?.annotations ?? []).filter((a: any) => a.type === 'url_citation').map((a: any) => a.url_citation?.url ?? '').filter(Boolean)
+      const res: any = await withRetry(() => client.chat.completions.create({
+        model: 'sonar-pro',
+        temperature: 0,
+        messages: [
+          { role: 'system', content: `You are a helpful assistant. Today's date is ${date}. The user is located in the United States.` },
+          { role: 'user', content: probe.prompt_text },
+        ],
+      } as Parameters<typeof client.chat.completions.create>[0], { signal: ac.signal }), 3, `Perplexity ${probe.id}`)
+
+      const text: string = res.choices?.[0]?.message?.content ?? ''
+      if (!text.trim()) throw new Error('Empty response')
+      const citations: string[] = Array.isArray(res.citations) ? res.citations : []
+
+      console.log(`[Perplexity] probe ${probe.id} latency=${Date.now() - start}ms citations=${citations.length}`)
       await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
     } catch (err) {
       if (signal?.aborted) return
-      console.error(`[ChatGPT-Search] probe failed (${probe.id}):`, err)
+      const status = (err as { status?: number })?.status
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[Perplexity] probe failed (${probe.id}) status=${status ?? 'n/a'}: ${msg}`)
       await onResult(probe.id, { status: 'failed' })
+    } finally {
+      clearTimeout(timer)
     }
-  }))
+  }, signal)
 }
 
-// ---- Google direct API (gemini-2.0-flash with googleSearchRetrieval grounding) ----
-// Uses gemini-2.5-flash with googleSearch grounding.
-// @google/generative-ai 0.24.1 types don't include googleSearch yet — cast to any.
+// ---- Google direct API (gemini-2.5-flash with googleSearch grounding) ----
 // Grounding redirect URLs are resolved to real URLs via HEAD request.
 
 export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
@@ -375,9 +270,6 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
     if (signal?.aborted) return
     const start = Date.now()
     try {
-      // @google/generative-ai doesn't accept AbortSignal — wrap with abortableRequest.
-      // Also race against a hard 90s timeout so a hung/rate-limited request fails
-      // cleanly instead of blocking the Promise.all forever.
       const result = await Promise.race([
         abortableRequest(
           model.generateContent({
@@ -387,7 +279,7 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
           }),
           signal
         ),
-        timeout(90_000, `Gemini probe ${probe.id}`),
+        timeout(45_000, `Gemini probe ${probe.id}`),
       ])
       const text = result.response.text()
       if (!text.trim()) throw new Error('Empty response')
@@ -413,100 +305,4 @@ export async function probeGoogleDirect(probes: Probe[], onResult: OnProbeResult
       await onResult(probe.id, { status: 'failed' })
     }
   }))
-}
-
-// ---- Bright Data webhook-based submission ----
-// Submits all probes to BD simultaneously with a callback URL.
-// BD processes them asynchronously and POSTs results to our webhook endpoint.
-// No polling, no timeouts — Inngest step.waitForEvent handles the wait.
-
-async function triggerBD(
-  datasetId: string,
-  body: unknown,
-  webhookUrl: string,
-  apiKey: string,
-  label: string,
-): Promise<void> {
-  const res = await fetch(
-    `https://api.brightdata.com/datasets/v3/trigger?dataset_id=${datasetId}&format=json&notify=true&endpoint=${encodeURIComponent(webhookUrl)}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    }
-  )
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`BD trigger failed for ${label}: ${res.status} ${text}`)
-  }
-}
-
-export async function submitOpenAIProbes(
-  probes: Probe[],
-  webhookBase: string,
-  reportId: string,
-): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
-  console.log(`[ChatGPT] submitting ${probes.length} probes via BD webhook`)
-  for (const probe of probes) {
-    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=openai`
-    await triggerBD(
-      BD_CHATGPT_ID,
-      [{ url: 'https://chatgpt.com/', prompt: probe.prompt_text, country: 'US' }],
-      endpoint,
-      bdKey,
-      `ChatGPT probe ${probe.id}`,
-    )
-  }
-}
-
-export async function submitGoogleProbes(
-  probes: Probe[],
-  webhookBase: string,
-  reportId: string,
-): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required')
-  console.log(`[Gemini] submitting ${probes.length} probes via BD webhook`)
-  for (const probe of probes) {
-    const endpoint = `${webhookBase}/api/bd-webhook?probeId=${probe.id}&reportId=${reportId}&platform=google`
-    await triggerBD(
-      BD_GEMINI_ID,
-      { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-      endpoint,
-      bdKey,
-      `Gemini probe ${probe.id}`,
-    )
-  }
-}
-
-// ---- Google via Bright Data (real Gemini browser session) ----
-// Same concurrency/stagger/timeout strategy as ChatGPT.
-
-export async function probeGoogle(probes: Probe[], onResult: OnProbeResult, signal?: AbortSignal): Promise<void> {
-  const bdKey = process.env.BRIGHTDATA_API_KEY
-  if (!bdKey) throw new Error('BRIGHTDATA_API_KEY is required for Gemini probes')
-
-  console.log(`[Gemini] BD concurrency=${BD_CONCURRENCY} stagger=${BD_STAGGER_MS}ms probes=${probes.length}`)
-
-  await runWithConcurrency(probes, BD_CONCURRENCY, BD_STAGGER_MS, async (probe) => {
-    const start = Date.now()
-    try {
-      const { text, citations } = await Promise.race([
-        brightDataScrape(
-          BD_GEMINI_ID,
-          { input: [{ url: 'https://gemini.google.com/', prompt: probe.prompt_text, country: 'US', index: 1 }] },
-          bdKey,
-          signal
-        ),
-        timeout(BD_TIMEOUT_MS, `Gemini probe ${probe.id}`),
-      ])
-      await onResult(probe.id, { response_text: text, citations, latency_ms: Date.now() - start, status: 'complete' })
-    } catch (err) {
-      if (signal?.aborted) return
-      console.warn(`[Gemini] probe failed (${probe.id}):`, err)
-      await onResult(probe.id, { status: 'failed' })
-    }
-  }, signal)
 }

@@ -109,7 +109,7 @@ export async function parseProbeResponses(
   inference: InferenceResult,
   reportUrl: string
 ): Promise<void> {
-  const eligible = probes.filter((p) => p.status === 'complete' && p.response_text)
+  const eligible = probes.filter((p) => p.status === 'complete' && p.response_text && !p.parsed_json)
 
   for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
     const batch = eligible.slice(i, i + BATCH_SIZE)
