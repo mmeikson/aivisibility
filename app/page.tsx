@@ -18,16 +18,19 @@ const FEATURES = [
     title: 'See where you rank',
     description:
       "Compare how often you're mentioned by ChatGPT, Claude, Gemini, and Perplexity against your competitive set.",
+    img: '/img/rank.png',
   },
   {
     title: 'Know your sources',
     description:
       "Discover which websites, reviews, and articles are shaping your brand's AI reputation.",
+    img: '/img/sources.png',
   },
   {
     title: 'Improve your visibility',
     description:
       'Get specific, prioritised recommendations on where to publish, which sources to influence, and how to grow your AI presence.',
+    img: '/img/recommendation.png',
   },
 ]
 
@@ -191,7 +194,12 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="w-full bg-[#F3F2EF] rounded-2xl rounded-b-none p-2 pb-0 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.08)]">
-                <div className="aspect-[64/27] bg-white border border-[#E5E2DC] border-b-0 rounded-xl rounded-b-none" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={f.img}
+                  alt={f.title}
+                  className="w-full rounded-xl rounded-b-none border border-[#E5E2DC] border-b-0 block"
+                />
               </div>
             </div>
           ))}
