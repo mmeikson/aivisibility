@@ -93,7 +93,6 @@ export default function HomePage() {
               Log in
             </Link>
           )}
-          <span className="text-xs text-[#6C6C6C]">Beta</span>
         </div>
       </header>
 

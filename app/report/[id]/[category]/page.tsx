@@ -114,7 +114,6 @@ export default async function CategoryPage({ params }: Props) {
         >
           ← {report.company_name ?? 'Report'}
         </Link>
-        <span className="text-xs text-[#6C6C6C]">Beta</span>
       </header>
 
       <div className="flex-1 px-6 py-12 max-w-[1024px] mx-auto w-full space-y-12">

@@ -130,7 +130,6 @@ export default function LoadingPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
-        <span className="text-xs text-[#6C6C6C]">Beta</span>
       </header>
 
       {/* Main */}

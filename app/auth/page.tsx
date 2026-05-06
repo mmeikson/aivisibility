@@ -76,7 +76,6 @@ function AuthForm() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
-        <span className="text-xs text-[#6C6C6C]">Beta</span>
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">

@@ -118,7 +118,6 @@ export default async function ReportPage({ params }: Props) {
         <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
-          <span className="text-xs text-[#6C6C6C]">Beta</span>
         </header>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
@@ -243,7 +242,6 @@ export default async function ReportPage({ params }: Props) {
               Dashboard
             </Link>
           )}
-          <span className="text-xs text-[#6C6C6C]">Beta</span>
         </div>
       </header>
 
