@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin']
 const figtree = Figtree({ variable: '--font-figtree', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'GEO Visibility Analyzer',
+  title: 'Percelo | AI Visibility Analyzer',
   description: 'Measure your brand\'s visibility in AI-generated responses — and fix it.',
 }
 
