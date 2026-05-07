@@ -6,9 +6,9 @@ import type { Probe } from '@/lib/db/types'
 
 // Within-group weights derived from original market-share proportions.
 // Parametric group: openai(0.60) + anthropic(0.20) → 0.75 / 0.25
-// Retrieval group:  google only
+// Retrieval group:  google(0.70) + perplexity(0.30)
 const PARAMETRIC_WEIGHTS: Record<string, number> = { openai: 0.75, anthropic: 0.25 }
-const RETRIEVAL_WEIGHTS: Record<string, number> = { google: 1.0 }
+const RETRIEVAL_WEIGHTS: Record<string, number> = { google: 0.70, perplexity: 0.30 }
 
 function strengthWeight(strength: string): number {
   return strength === 'confident' ? 1.0 : strength === 'hedged' ? 0.5 : 0.0

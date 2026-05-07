@@ -1,14 +1,14 @@
 import type { Probe } from '@/lib/db/types'
 
 // Retrieval Score (0–100)
-// Measures visibility on Google which uses live web retrieval.
+// Measures visibility on live-retrieval platforms (Google, Perplexity).
 
 export function scoreRetrieval(
   probes: Probe[],
   brandDomain: string
 ): { raw_score: number; component_scores_json: Record<string, number> } {
   const retrievalProbes = probes.filter(
-    (p) => p.platform === 'google' && p.parsed_json
+    (p) => (p.platform === 'google' || p.platform === 'perplexity') && p.parsed_json
   )
 
   if (retrievalProbes.length === 0) {
