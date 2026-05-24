@@ -8,7 +8,6 @@ import { computeInsights } from '@/lib/analysis/insights'
 import { InsightsSection } from '@/components/insights-section'
 import { CompetitorQuadrant, type CompetitorPoint } from '@/components/competitor-quadrant'
 import { ReportTabs } from '@/components/report-tabs'
-import { VisibilityGauge } from '@/components/visibility-gauge'
 import { InfluentialPublications } from '@/components/influential-publications'
 import { getUser } from '@/lib/supabase/server'
 import { ShareButton } from '@/components/share-button'
@@ -100,6 +99,20 @@ function severityClass(score: number): string {
   if (score >= 60) return 'severity-moderate'
   if (score >= 40) return 'severity-weak'
   return 'severity-critical'
+}
+
+function severityBand(score: number): 'healthy' | 'moderate' | 'weak' | 'critical' {
+  if (score >= 80) return 'healthy'
+  if (score >= 60) return 'moderate'
+  if (score >= 40) return 'weak'
+  return 'critical'
+}
+
+function severityLabel(score: number): string {
+  if (score >= 80) return 'Strong'
+  if (score >= 60) return 'Moderate'
+  if (score >= 40) return 'Weak'
+  return 'Critical'
 }
 
 
@@ -311,8 +324,9 @@ export default async function ReportPage({ params }: Props) {
             <div className="space-y-12">
               {/* Visibility Assessment card */}
               {scores.length > 0 && report.category && (
+                <div className="space-y-4">
+                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Overview</h2>
                 <div className="rounded-lg border border-[#E5E2DC] bg-white px-5 py-4 flex flex-col gap-4">
-                  <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">Visibility Assessment</p>
                   <div className="flex flex-col-reverse sm:flex-row items-start gap-6">
                     <p
                       className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
@@ -320,19 +334,25 @@ export default async function ReportPage({ params }: Props) {
                     >
                       {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
                     </p>
-                    <div className="shrink-0 sm:self-start">
-                      <VisibilityGauge score={overallScore} />
+                    <div className="shrink-0 sm:self-start flex flex-col items-center gap-2">
+                      <span
+                        className={`text-5xl leading-none tracking-tight font-semibold severity-${severityBand(overallScore)}`}
+                        style={{ fontFamily: 'var(--font-geist-sans)' }}
+                      >
+                        {overallScore}
+                      </span>
+                      <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border severity-bg-${severityBand(overallScore)} severity-${severityBand(overallScore)}`}>
+                        {severityLabel(overallScore)}
+                      </span>
                     </div>
                   </div>
+                </div>
                 </div>
               )}
               {/* Competitive ranking */}
               {quadrantPoints.length > 1 && rankingTotal > 0 && (
                 <div className="space-y-4 fade-up fade-up-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Competitive Ranking</span>
-                    <span className="flex-1 h-px bg-[#E5E2DC]" />
-                  </div>
+                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Competitive Ranking</h2>
                   <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
                 </div>
               )}
@@ -340,10 +360,7 @@ export default async function ReportPage({ params }: Props) {
               {/* Top Voices */}
               {sourceGapResult.hasAnyData && (
                 <div className="space-y-4 fade-up fade-up-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Top Voices in Your Category</span>
-                    <span className="flex-1 h-px bg-[#E5E2DC]" />
-                  </div>
+                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Influential Voices</h2>
                   <InfluentialPublications entries={
                     (Object.values(sourceGapResult.byType) as import('@/lib/analysis/source-gaps').DomainEntry[][])
                       .flat()
@@ -355,10 +372,7 @@ export default async function ReportPage({ params }: Props) {
               {/* Insights */}
               {insights.salienceTotal > 0 && (
                 <div className="space-y-4 fade-up fade-up-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Insights</span>
-                    <span className="flex-1 h-px bg-[#E5E2DC]" />
-                  </div>
+                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Insights</h2>
                   <InsightsSection
                     insights={insights}
                     companyName={report.company_name ?? new URL(report.url).hostname}
@@ -370,10 +384,7 @@ export default async function ReportPage({ params }: Props) {
               {/* Quick wins */}
               {recommendations.length > 0 && (
                 <div className="space-y-4 fade-up fade-up-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">Top recommendations</span>
-                    <span className="flex-1 h-px bg-[#E5E2DC]" />
-                  </div>
+                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Recommendations</h2>
                   <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
                     {recommendations.slice(0, 5).map((rec, i) => (
                       <RecCard key={rec.id} rec={rec} index={i} />

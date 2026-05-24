@@ -14,7 +14,6 @@ export const PLATFORM_LABELS: Record<string, string> = {
 
 export const COL = {
   type:      'w-[90px]  shrink-0',
-  mentioned: 'w-[72px]  shrink-0',
   platforms: 'w-[148px] shrink-0',
   count:     'w-[52px]  shrink-0 text-right',
   chevron:   'w-4       shrink-0',
@@ -25,7 +24,6 @@ export function DomainTableHeader() {
     <div className="flex items-center gap-2 px-3 py-2 bg-[#F7F6F3] border-b border-[#E5E2DC]">
       <span className="flex-1 min-w-0 text-[10px] font-mono text-[#ABABAB] uppercase tracking-wider">Domain</span>
       <span className={`${COL.type} text-[10px] font-mono text-[#ABABAB] uppercase tracking-wider`}>Type</span>
-      <span className={`${COL.mentioned} text-[10px] font-mono text-[#ABABAB] uppercase tracking-wider`}>Mentioned</span>
       <span className={`${COL.platforms} text-[10px] font-mono text-[#ABABAB] uppercase tracking-wider`}>Platforms</span>
       <span className={`${COL.count} text-[10px] font-mono text-[#ABABAB] uppercase tracking-wider`}>Cites</span>
       <span className={COL.chevron} />
@@ -91,7 +89,7 @@ export function DomainRow({ entry, isExpanded, onToggle }: {
             className="rounded-sm shrink-0"
             unoptimized
           />
-          <span className="font-mono text-[11px] text-[#1A1A1A] truncate">
+          <span className="font-mono text-[13px] text-[#1A1A1A] truncate">
             {entry.domain}
           </span>
         </div>
@@ -106,19 +104,6 @@ export function DomainRow({ entry, isExpanded, onToggle }: {
             >
               {SOURCE_TYPE_LABELS[entry.sourceType]}
             </span>
-          )}
-        </div>
-
-        <div className={COL.mentioned}>
-          {entry.brandMentioned !== null ? (
-            <span className={[
-              'text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded',
-              entry.brandMentioned ? 'bg-[#D1FAE5] text-[#065F46]' : 'bg-[#FEF3C7] text-[#92400E]',
-            ].join(' ')}>
-              {entry.brandMentioned ? 'yes' : 'no'}
-            </span>
-          ) : (
-            <span className="text-[10px] font-mono text-[#CDCBC6]">—</span>
           )}
         </div>
 
