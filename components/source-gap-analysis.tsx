@@ -50,14 +50,14 @@ export function SourceGapAnalysis({ result, companyName: _companyName }: Props) 
               key={key}
               onClick={() => setActiveFilter(key)}
               className={[
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors',
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors',
                 isActive
-                  ? 'bg-[#1A1A1A] text-white'
-                  : 'bg-[#F3F2EF] text-[#6C6C6C] hover:bg-[#E8E6E0] hover:text-[#1A1A1A]',
+                  ? 'bg-[#141414] text-[#FAFAF8]'
+                  : 'bg-[#F3F2EF] text-[#6C6C6C] hover:bg-[#222429] hover:text-[#141414]',
               ].join(' ')}
             >
               {label}
-              <span className={`text-[10px] font-mono ${isActive ? 'text-[#999]' : 'text-[#ABABAB]'}`}>
+              <span className={`text-[11px] font-mono ${isActive ? 'text-[#ABABAB]' : 'text-[#ABABAB]'}`}>
                 {count}
               </span>
               {gapCount > 0 && (
@@ -74,9 +74,9 @@ export function SourceGapAnalysis({ result, companyName: _companyName }: Props) 
           No sources in this category.
         </div>
       ) : (
-        <div className="border border-[#E5E2DC] rounded-lg overflow-hidden bg-white">
+        <div className="border border-[#E5E2DC] rounded-lg overflow-hidden bg-[#ffffff]">
           <DomainTableHeader />
-          <div className="divide-y divide-[#F0EEE9]">
+          <div className="divide-y divide-[#E5E2DC]">
             {filteredEntries.map((entry) => (
               <DomainRow
                 key={entry.domain}

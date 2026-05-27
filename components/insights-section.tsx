@@ -24,7 +24,14 @@ function mentionRateStroke(rate: number) {
   if (rate >= 0.7) return '#16a34a'
   if (rate >= 0.45) return '#8fa83d'
   if (rate >= 0.2) return '#CEAC01'
-  return '#b91c1c'
+  return '#e5534b'
+}
+
+function mentionRateBarColor(rate: number) {
+  if (rate >= 0.7) return '#16a34a'
+  if (rate >= 0.45) return '#8fa83d'
+  if (rate >= 0.2) return '#CEAC01'
+  return '#e5534b'
 }
 
 interface Props {
@@ -55,8 +62,8 @@ export function InsightsSection({ insights, companyName, description }: Props) {
           const circ = 2 * Math.PI * r
           const filled = salienceRate * circ
           return (
-            <div className="rounded-lg border border-[#E5E2DC] bg-white px-5 py-4 flex flex-col gap-4">
-              <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">How often are you recommended?</p>
+            <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] px-5 py-4 flex flex-col gap-4">
+              <p className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">How often are you recommended?</p>
               {/* Donut */}
               <div className="flex flex-col items-center gap-1.5">
                 <svg viewBox="0 0 64 64" width="72" height="72">
@@ -70,24 +77,24 @@ export function InsightsSection({ insights, companyName, description }: Props) {
                     transform="rotate(-90 32 32)"
                   />
                   <text x="32" y="32" textAnchor="middle" dominantBaseline="central"
-                    fontSize="13" fontWeight="600" fill="#141414"
+                    fontSize="14" fontWeight="600" fill="#141414"
                     fontFamily="var(--font-geist-sans)">
                     {Math.round(salienceRate * 100)}%
                   </text>
                 </svg>
-                <p className="text-[10px] text-[#6C6C6C] leading-relaxed text-center">
+                <p className="text-[11px] text-[#6C6C6C] leading-relaxed text-center">
                   {companyName} appeared in <span className="font-medium text-[#141414]">{salienceMentioned} of {salienceTotal}</span> category-level queries.
                 </p>
               </div>
               {/* Co-mentions stacked below */}
               {topCompetitors.length > 0 && (
                 <div className="flex flex-col gap-2 border-t border-[#E5E2DC] pt-3">
-                  <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">Most co-mentioned with</p>
+                  <p className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">Most co-mentioned with</p>
                   <div className="flex flex-wrap gap-1.5">
                     {topCompetitors.map((c) => {
                       const domain = c.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'
                       return (
-                        <span key={c.name} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[#E5E2DC] bg-[#F7F6F3] text-xs text-[#141414]">
+                        <span key={c.name} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-[#E5E2DC] bg-[#F3F2EF] text-xs text-[#141414]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=16`} alt="" width={12} height={12} className="rounded-sm" />
                           {c.name}
@@ -103,8 +110,8 @@ export function InsightsSection({ insights, companyName, description }: Props) {
 
         {/* Per-platform breakdown */}
         {platforms.length > 0 && (
-          <div className="rounded-lg border border-[#E5E2DC] bg-white divide-y divide-[#E5E2DC] overflow-hidden">
-            <p className="px-5 py-3 text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">
+          <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] divide-y divide-[#E5E2DC] overflow-hidden">
+            <p className="px-5 py-3 text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">
               Mention rate by platform
             </p>
             {platforms.map(p => (
@@ -116,8 +123,8 @@ export function InsightsSection({ insights, companyName, description }: Props) {
                 </div>
                 <div className="flex-1 h-1.5 rounded-full bg-[#E5E2DC] overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${p.rate >= 0.7 ? 'bg-[#1A7A4A]' : p.rate >= 0.45 ? 'bg-[#B07D2A]' : p.rate >= 0.2 ? 'bg-[#8A4A2A]' : 'bg-[#CC2020]'}`}
-                    style={{ width: `${Math.round(p.rate * 100)}%` }}
+                    className="h-full rounded-full"
+                    style={{ width: `${Math.round(p.rate * 100)}%`, backgroundColor: mentionRateBarColor(p.rate) }}
                   />
                 </div>
                 <span className={`text-xs font-mono w-10 text-right shrink-0 ${mentionRateColor(p.rate)}`}>
@@ -132,9 +139,9 @@ export function InsightsSection({ insights, companyName, description }: Props) {
 
       {/* Brand identity card */}
       {description && (
-        <div className="rounded-lg border border-[#E5E2DC] bg-white px-5 py-4 flex flex-col gap-3">
+        <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] px-5 py-4 flex flex-col gap-3">
           <div>
-            <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest mb-1.5">How we read your brand</p>
+            <p className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest mb-1.5">How we read your brand</p>
             <p className="text-sm text-[#141414] leading-relaxed">{description}</p>
           </div>
           <div className="border-t border-[#E5E2DC] pt-3 flex items-start gap-2">
@@ -149,11 +156,11 @@ export function InsightsSection({ insights, companyName, description }: Props) {
               </>
             ) : (
               <>
-                <span className="mt-0.5 text-[#b91c1c]">
+                <span className="mt-0.5 text-[#e5534b]">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6.5" stroke="currentColor"/><path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><circle cx="7" cy="10" r="0.75" fill="currentColor"/></svg>
                 </span>
                 <span className="text-xs text-[#6C6C6C] leading-relaxed">
-                  <span className="text-[#b91c1c] font-medium">{confusedCount} probe{confusedCount !== 1 ? 's' : ''} returned responses about a different entity</span> — AI models may be conflating {companyName} with another company.
+                  <span className="text-[#e5534b] font-medium">{confusedCount} probe{confusedCount !== 1 ? 's' : ''} returned responses about a different entity</span> — AI models may be conflating {companyName} with another company.
                   {confusedWith.length > 0 && <ConfusionDetail names={confusedWith} />}
                 </span>
               </>

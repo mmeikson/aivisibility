@@ -58,7 +58,6 @@ function buildMatrix(probes: Probe[], platforms: readonly string[]): {
       promptOrder.push(p.prompt_text)
     }
   }
-  // Sort by prompt_type so rows are visually grouped
   const typeOf = new Map(probes.map((p) => [p.prompt_text, p.prompt_type]))
   promptOrder.sort((a, b) => {
     const oa = PROMPT_TYPE_ORDER[typeOf.get(a) ?? ''] ?? 99
@@ -78,7 +77,7 @@ function buildMatrix(probes: Probe[], platforms: readonly string[]): {
 }
 
 function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () => void }) {
-  if (!probe) return <td className="px-3 py-2.5 text-center" />
+  if (!probe) return <td className="px-6 py-4 text-center" />
 
   const mentioned = probe.parsed_json?.was_mentioned
   const strength = probe.parsed_json?.recommendation_strength
@@ -89,13 +88,13 @@ function MentionDot({ probe, onClick }: { probe: Probe | undefined; onClick: () 
   }
 
   return (
-    <td className="px-3 py-2.5 text-center">
+    <td className="px-6 py-4 text-center">
       <button
         onClick={onClick}
         title={mentioned ? `${strength} recommendation` : 'Not mentioned'}
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full outline outline-2 outline-transparent hover:outline-[#ABABAB] transition-all"
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white border border-[#E5E2DC] shadow-sm hover:shadow-md hover:border-[#ABABAB] transition-all"
       >
-        <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+        <span className={`w-2.5 h-2.5 rounded-full ${dotClass}`} />
       </button>
     </td>
   )
@@ -109,7 +108,6 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
 
   const { prompts, matrix } = buildMatrix(probes, activePlatforms)
 
-  // Summary stats per platform
   const stats = Object.fromEntries(
     activePlatforms.map((p) => {
       const platformProbes = probes.filter((r) => r.platform === p)
@@ -119,20 +117,20 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
   )
 
   return (
-    <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
+    <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-[#E5E2DC] bg-[#FAFAF8]">
-              <th className="px-5 py-3 text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest font-normal w-full">
+            <tr className="border-b border-[#E5E2DC] bg-[#F3F2EF]">
+              <th className="px-5 py-5 text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest font-normal w-[80%]">
                 Prompt
               </th>
               {activePlatforms.map((p) => (
-                <th key={p} className="px-3 py-3 text-center whitespace-nowrap">
+                <th key={p} className="px-6 py-5 text-center whitespace-nowrap">
                   <div className="flex flex-col items-center gap-1">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={PLATFORM_ICONS[p]} alt={PLATFORM_LABELS[p]} title={PLATFORM_LABELS[p]} width={16} height={16} className="shrink-0" />
-                    <span className="text-[10px] font-mono text-[#ABABAB] tracking-wide">
+                    <img src={PLATFORM_ICONS[p]} alt={PLATFORM_LABELS[p]} title={PLATFORM_LABELS[p]} width={22} height={22} className="shrink-0" />
+                    <span className="text-[11px] font-mono text-[#ABABAB] tracking-wide">
                       {stats[p]?.mentioned ?? 0}/{stats[p]?.total ?? 0}
                     </span>
                   </div>
@@ -144,18 +142,17 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
             {prompts.map((text, i) => {
               const row = matrix.get(text)
               const isLast = i === prompts.length - 1
-              // Probe type from any platform
               const anyProbe = row ? [...row.values()][0] : undefined
               return (
                 <tr
                   key={text}
                   className={!isLast ? 'border-b border-[#E5E2DC]' : ''}
                 >
-                  <td className="px-5 py-2.5">
+                  <td className="px-5 py-4">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="text-xs text-[#141414] leading-snug">{text}</span>
                       {anyProbe && (
-                        <span className="shrink-0 text-[10px] font-mono text-[#CDCBC6] uppercase tracking-wide hidden sm:inline">
+                        <span className="shrink-0 text-[11px] font-mono text-[#6C6C6C] uppercase tracking-wide hidden sm:inline">
                           {PROMPT_TYPE_LABELS[anyProbe.prompt_type] ?? anyProbe.prompt_type}
                         </span>
                       )}
@@ -176,17 +173,17 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 px-5 py-3 border-t border-[#E5E2DC] bg-[#FAFAF8]">
-        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+      <div className="flex items-center gap-4 px-5 py-5 border-t border-[#E5E2DC] bg-[#F3F2EF]">
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-[#ABABAB]">
           <span className="w-2 h-2 rounded-full bg-[#16a34a]" /> Confident
         </span>
-        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-[#ABABAB]">
           <span className="w-2 h-2 rounded-full bg-[#CEAC01]" /> Hedged
         </span>
-        <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#ABABAB]">
+        <span className="flex items-center gap-1.5 text-[11px] font-mono text-[#ABABAB]">
           <span className="w-2 h-2 rounded-full bg-[#E5E2DC]" /> Not mentioned
         </span>
-        <span className="text-[10px] font-mono text-[#CDCBC6] ml-auto">click any dot to view response</span>
+        <span className="text-[11px] font-mono text-[#E5E2DC] ml-auto">click any dot to view response</span>
       </div>
 
       {selected && createPortal(
@@ -198,13 +195,11 @@ export function ProbeExplorer({ probes, companyName, platformSummaries = {} }: P
 }
 
 function renderResponse(text: string, companyName: string): string {
-  // Escape HTML entities first
   let html = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 
-  // Process block elements line by line
   const lines = html.split('\n')
   const out: string[] = []
   let listType = ''
@@ -240,7 +235,6 @@ function renderResponse(text: string, companyName: string): string {
       out.push('<div class="h-2"></div>')
     } else {
       if (listType) { out.push(`</${listType}>`); listType = '' }
-      // Lines starting with an emoji get extra top spacing (Bright Data uses these as section headers)
       const startsWithEmoji = /^\p{Emoji}/u.test(t)
       const cls = startsWithEmoji ? 'class="mt-3 font-medium"' : ''
       out.push(`<p ${cls}>${t}</p>`)
@@ -248,19 +242,17 @@ function renderResponse(text: string, companyName: string): string {
   }
   if (listType) out.push(`</${listType}>`)
 
-  // Inline styles: bold and italic
   let result = out.join('')
   result = result
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
 
-  // Highlight company name in text nodes only (not inside HTML tags)
   if (companyName) {
     const escaped = companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const nameRe = new RegExp(escaped, 'gi')
     result = result
       .split(/(<[^>]+>)/)
-      .map((part) => part.startsWith('<') ? part : part.replace(nameRe, '<mark style="background:#fef08a;border-radius:2px;padding:0 2px">$&</mark>'))
+      .map((part) => part.startsWith('<') ? part : part.replace(nameRe, '<mark style="background:#854d0e;color:#fef08a;border-radius:2px;padding:0 2px">$&</mark>'))
       .join('')
   }
 
@@ -281,7 +273,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
       <div className="absolute inset-0 bg-[#141414]/40 backdrop-blur-[2px]" />
 
       <div
-        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col bg-[#FAFAF8] rounded-xl border border-[#E5E2DC] shadow-2xl slide-in-right overflow-hidden"
+        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col bg-[#ffffff] rounded-xl border border-[#E5E2DC] shadow-2xl slide-in-right overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -291,8 +283,8 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
               <span className="text-xs font-mono text-[#6C6C6C] uppercase tracking-widest">
                 {PLATFORM_LABELS[probe.platform] ?? probe.platform}
               </span>
-              <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-              <span className="text-xs font-mono text-[#ABABAB] uppercase tracking-wide">
+              <span className="w-1 h-1 rounded-full bg-[#E5E2DC]" />
+              <span className="text-xs font-mono text-[#6C6C6C] uppercase tracking-wide">
                 {PROMPT_TYPE_LABELS[probe.prompt_type] ?? probe.prompt_type}
               </span>
             </div>
@@ -307,14 +299,14 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
         </div>
 
         {/* Metadata strip */}
-        <div className="flex items-center gap-3 px-6 py-2.5 bg-[#F3F2EF] border-b border-[#E5E2DC] text-xs font-mono flex-wrap">
+        <div className="flex items-center gap-3 px-6 py-4 bg-[#F3F2EF] border-b border-[#E5E2DC] text-xs font-mono flex-wrap">
           <span className={`flex items-center gap-1.5 ${mentioned ? 'severity-healthy' : 'text-[#ABABAB]'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${mentioned ? 'severity-bar-healthy' : 'bg-[#CDCBC6]'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${mentioned ? 'severity-bar-healthy' : 'bg-[#E5E2DC]'}`} />
             {mentioned ? `${companyName} mentioned` : 'Not mentioned'}
           </span>
           {parsed?.recommendation_strength && parsed.recommendation_strength !== 'none' && (
             <>
-              <span className="text-[#CDCBC6]">·</span>
+              <span className="text-[#E5E2DC]">·</span>
               <span className={parsed.recommendation_strength === 'confident' ? 'severity-healthy' : 'severity-moderate'}>
                 {parsed.recommendation_strength} recommendation
               </span>
@@ -322,7 +314,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
           )}
           {parsed?.entity_confused && (
             <>
-              <span className="text-[#CDCBC6]">·</span>
+              <span className="text-[#E5E2DC]">·</span>
               <span className="text-[#CEAC01]">
                 ⚠ confused with {parsed.confused_with ?? 'another entity'}
               </span>
@@ -330,7 +322,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
           )}
           {competitors.length > 0 && (
             <>
-              <span className="text-[#CDCBC6]">·</span>
+              <span className="text-[#E5E2DC]">·</span>
               <span className="text-[#6C6C6C]">
                 {competitors.slice(0, 3).join(', ')}{competitors.length > 3 ? ` +${competitors.length - 3}` : ''} mentioned
               </span>
@@ -353,11 +345,11 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
         {/* Citations */}
         {probe.citations && probe.citations.length > 0 && (
           <div className="px-6 py-4 border-t border-[#E5E2DC]">
-            <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest mb-2">Sources</p>
+            <p className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest mb-2">Sources</p>
             <div className="space-y-1">
               {probe.citations.map((url, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <span className="text-[10px] font-mono text-[#CDCBC6] mt-0.5 shrink-0">{i + 1}</span>
+                  <span className="text-[11px] font-mono text-[#E5E2DC] mt-0.5 shrink-0">{i + 1}</span>
                   <a
                     href={url}
                     target="_blank"
@@ -373,7 +365,7 @@ function ProbeModal({ probe, companyName, onClose }: { probe: Probe; companyName
         )}
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-[#E5E2DC] flex items-center justify-between">
+        <div className="px-6 py-5 border-t border-[#E5E2DC] flex items-center justify-between">
           <span className="text-xs text-[#ABABAB]">
             {probe.latency_ms ? `${(probe.latency_ms / 1000).toFixed(1)}s` : ''}
           </span>

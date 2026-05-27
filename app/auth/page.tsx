@@ -71,12 +71,12 @@ function AuthForm() {
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
-      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+      <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
         </Link>
-      </header>
+      </div></header>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
         <div className="w-full max-w-sm space-y-8 fade-up">
@@ -98,7 +98,7 @@ function AuthForm() {
           </div>
 
           {success ? (
-            <div className="rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-3 text-sm text-[#16a34a]">
+            <div className="rounded-lg border border-[#16a34a/30] bg-[#16a34a/10] px-4 py-3 text-sm text-[#16a34a]">
               {success}
             </div>
           ) : (
@@ -106,7 +106,7 @@ function AuthForm() {
               {/* Google */}
               <button
                 onClick={handleGoogle}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-[#E5E2DC] rounded-lg text-sm text-[#141414] hover:border-[#141414]/30 transition-all"
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#ffffff] border border-[#E5E2DC] rounded-lg text-sm text-[#141414] hover:border-[#E5E2DC] transition-all"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -131,7 +131,7 @@ function AuthForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
                   required
-                  className="w-full px-4 py-3 bg-white border border-[#E5E2DC] rounded-lg text-sm text-[#141414] placeholder:text-[#ABABAB] focus:outline-none focus:ring-2 focus:ring-[#141414]/20 focus:border-[#141414] transition-all"
+                  className="w-full px-4 py-3 bg-[#ffffff] border border-[#E5E2DC] rounded-lg text-sm text-[#141414] placeholder:text-[#E5E2DC] focus:outline-none focus:ring-2 focus:ring-[#141414]/30 focus:border-[#141414] transition-all"
                 />
                 <input
                   type="password"
@@ -140,13 +140,13 @@ function AuthForm() {
                   placeholder="Password"
                   required
                   minLength={6}
-                  className="w-full px-4 py-3 bg-white border border-[#E5E2DC] rounded-lg text-sm text-[#141414] placeholder:text-[#ABABAB] focus:outline-none focus:ring-2 focus:ring-[#141414]/20 focus:border-[#141414] transition-all"
+                  className="w-full px-4 py-3 bg-[#ffffff] border border-[#E5E2DC] rounded-lg text-sm text-[#141414] placeholder:text-[#E5E2DC] focus:outline-none focus:ring-2 focus:ring-[#141414]/30 focus:border-[#141414] transition-all"
                 />
-                {error && <p className="text-xs text-[#b91c1c]">{error}</p>}
+                {error && <p className="text-xs text-[#e5534b]">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full px-4 py-3 bg-[#141414] text-[#FAFAF8] text-sm font-medium rounded-lg hover:bg-[#2a2a2a] disabled:opacity-40 transition-all"
+                  className="w-full px-4 py-3 bg-[#141414] text-white text-sm font-medium rounded-lg hover:bg-[#333333] disabled:opacity-40 transition-all"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">

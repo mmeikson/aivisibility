@@ -18,9 +18,11 @@ interface Props {
   prompts: React.ReactNode
   citations: React.ReactNode
   recommendations: Recommendation[]
+  headerLeft: React.ReactNode
+  headerRight?: React.ReactNode
 }
 
-export function ReportTabs({ overview, prompts, citations, recommendations }: Props) {
+export function ReportTabs({ overview, prompts, citations, recommendations, headerLeft, headerRight }: Props) {
   const [active, setActive] = useState<TabKey>('overview')
 
   useEffect(() => {
@@ -38,24 +40,34 @@ export function ReportTabs({ overview, prompts, citations, recommendations }: Pr
 
   return (
     <div>
-      {/* Tab bar */}
-      <div className="flex gap-0 border-b border-[#E5E2DC] mb-10">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActive(tab.key)}
-            className={[
-              'px-4 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors',
-              active === tab.key
-                ? 'border-[#141414] text-[#141414]'
-                : 'border-transparent text-[#6C6C6C] hover:text-[#141414]',
-            ].join(' ')}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* Header row: left (identity + tabs) + right (donut + share) */}
+      <div className="flex items-start justify-between gap-8 mb-8">
+        <div className="flex-1 min-w-0">
+          {headerLeft}
+          {/* Tab bar */}
+          <div className="inline-flex gap-1 bg-[#ffffff] border border-[#E5E2DC] rounded-lg p-1 mt-4">
+            {TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActive(tab.key)}
+                className={[
+                  'px-4 py-1.5 text-xs font-medium rounded-md transition-all',
+                  active === tab.key
+                    ? 'bg-[#E5E2DC] text-[#141414] shadow-sm'
+                    : 'text-[#6C6C6C] hover:text-[#141414]',
+                ].join(' ')}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {headerRight && (
+          <div className="shrink-0">{headerRight}</div>
+        )}
       </div>
 
+      {/* Tab content — full width */}
       <div key={active}>{content[active]}</div>
     </div>
   )

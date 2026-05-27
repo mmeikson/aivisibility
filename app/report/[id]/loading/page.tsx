@@ -125,12 +125,12 @@ export default function LoadingPage() {
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
-      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+      <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
         </Link>
-      </header>
+      </div></header>
 
       {/* Main */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-16">
@@ -142,7 +142,7 @@ export default function LoadingPage() {
           {/* Heading */}
           <div className="space-y-2 fade-up">
             <div className="flex items-center gap-2 text-xs font-mono text-[#6C6C6C] tracking-widest uppercase">
-              <span className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-[#16a34a]' : 'bg-[#141414] pulse-dot'}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${isComplete ? 'bg-[#16a34a]' : 'bg-[#6C6C6C] pulse-dot'}`} />
               {isComplete ? 'Complete' : 'In progress'}
             </div>
             <h1
@@ -176,7 +176,7 @@ export default function LoadingPage() {
           <div className="space-y-0 fade-up fade-up-2">
             {events.length === 0 ? (
               <div className="flex items-center gap-3 py-2">
-                <span className="w-1 h-1 rounded-full bg-[#141414] pulse-dot" />
+                <span className="w-1 h-1 rounded-full bg-[#6C6C6C] pulse-dot" />
                 <span className="text-sm text-[#6C6C6C]">Initializing...</span>
               </div>
             ) : (
@@ -265,19 +265,19 @@ export default function LoadingPage() {
                   <div key={key} className={`flex items-center gap-3 py-1.5 ${indent ? 'pl-7' : ''}`}>
                     <div className="shrink-0 w-4 flex items-center justify-center">
                       {state === 'error' ? (
-                        <span className="text-xs text-[#b91c1c]">✕</span>
+                        <span className="text-xs text-[#e5534b]">✕</span>
                       ) : state === 'done' ? (
                         <svg className="w-3.5 h-3.5 text-[#16a34a]" viewBox="0 0 12 12" fill="none">
                           <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       ) : state === 'pending' ? (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#CDCBC6]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#E5E2DC]" />
                       ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#141414] pulse-dot" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#6C6C6C] pulse-dot" />
                       )}
                     </div>
                     <span className={`text-sm leading-snug ${
-                      state === 'error' ? 'text-[#b91c1c]' :
+                      state === 'error' ? 'text-[#e5534b]' :
                       state === 'done' ? 'text-[#ABABAB]' :
                       state === 'pending' ? 'text-[#CDCBC6]' :
                       'text-[#141414]'
@@ -292,7 +292,7 @@ export default function LoadingPage() {
 
           {/* Error state */}
           {error && (
-            <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm text-[#b91c1c]">
+            <div className="rounded-lg border border-[#e5534b/30] bg-[#e5534b/10] px-4 py-3 text-sm text-[#e5534b]">
               {error}
               <a href="/" className="ml-2 underline">Start over</a>
             </div>
@@ -320,7 +320,7 @@ export default function LoadingPage() {
         {!isComplete && (
           <button
             onClick={handleCancel}
-            className="text-xs text-[#ABABAB] hover:text-[#b91c1c] transition-colors font-mono"
+            className="text-xs text-[#ABABAB] hover:text-[#e5534b] transition-colors font-mono"
           >
             Cancel
           </button>

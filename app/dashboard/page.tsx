@@ -64,16 +64,16 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
-      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+      <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
         </Link>
         <div className="flex items-center gap-4">
           <span className="text-xs text-[#ABABAB]">{user.email}</span>
           <SignOutButton />
         </div>
-      </header>
+      </div></header>
 
       <div className="flex-1 px-6 py-12 max-w-4xl mx-auto w-full">
         <div className="space-y-8 fade-up">
@@ -88,7 +88,7 @@ export default async function DashboardPage() {
           </div>
 
           {reports.length === 0 ? (
-            <div className="rounded-lg border border-[#E5E2DC] bg-white px-8 py-12 text-center space-y-3">
+            <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] px-8 py-12 text-center space-y-3">
               <p className="text-sm text-[#6C6C6C]">No saved analyses yet.</p>
               <Link
                 href="/"
@@ -98,9 +98,9 @@ export default async function DashboardPage() {
               </Link>
             </div>
           ) : (
-            <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
+            <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] overflow-hidden">
               {/* Table header */}
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 border-b border-[#E5E2DC] text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 border-b border-[#E5E2DC] text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">
                 <span>URL</span>
                 <span className="text-right w-20">Score</span>
                 <span className="text-right w-20">Status</span>
@@ -137,7 +137,7 @@ export default async function DashboardPage() {
 
                   <div className="text-right w-20">
                     {report.avg_score !== null ? (
-                      <span className={`text-[10px] font-mono uppercase tracking-wide ${severityClass(report.avg_score)}`}>
+                      <span className={`text-[11px] font-mono uppercase tracking-wide ${severityClass(report.avg_score)}`}>
                         {severityLabel(report.avg_score)}
                       </span>
                     ) : null}
@@ -162,7 +162,7 @@ export default async function DashboardPage() {
           <div className="pt-2">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 text-sm text-[#141414] bg-[#141414] text-[#FAFAF8] px-5 py-2.5 rounded-lg hover:bg-[#2a2a2a] transition-colors"
+              className="inline-flex items-center gap-2 text-sm text-white bg-[#141414] px-5 py-2.5 rounded-lg hover:bg-[#333333] transition-colors"
             >
               + New analysis
             </Link>

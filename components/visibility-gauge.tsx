@@ -39,7 +39,7 @@ export function VisibilityGauge({ score }: { score: number }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">
+      <span className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">
         Overall Visibility
       </span>
       <svg viewBox="0 0 200 125" width="200" height="125">
@@ -81,7 +81,7 @@ export function VisibilityGauge({ score }: { score: number }) {
           x={CX} y={CY + 18}
           textAnchor="middle"
           fill={labelColor(score)}
-          fontSize="13"
+          fontSize="14"
           fontWeight="600"
           fontFamily="var(--font-geist-mono, monospace)"
           letterSpacing="0.5"
