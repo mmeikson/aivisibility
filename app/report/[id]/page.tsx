@@ -108,6 +108,13 @@ function severityBand(score: number): 'healthy' | 'moderate' | 'weak' | 'critica
   return 'critical'
 }
 
+function severityColor(score: number): string {
+  if (score >= 80) return '#16a34a'
+  if (score >= 60) return '#8fa83d'
+  if (score >= 40) return '#CEAC01'
+  return '#e5534b'
+}
+
 function severityLabel(score: number): string {
   if (score >= 80) return 'Strong'
   if (score >= 60) return 'Moderate'
@@ -128,10 +135,10 @@ export default async function ReportPage({ params }: Props) {
   if (report.status === 'failed') {
     return (
       <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
-        <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+        <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
-        </header>
+        </div></header>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <h1 className="text-xl text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)' }}>Analysis failed</h1>
@@ -244,7 +251,7 @@ export default async function ReportPage({ params }: Props) {
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
-      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+      <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
@@ -256,18 +263,18 @@ export default async function ReportPage({ params }: Props) {
             </Link>
           )}
         </div>
-      </header>
+      </div></header>
 
       {/* Save banner */}
       {showSaveBanner && (
-        <div className="border-b border-[#E5E2DC] bg-white px-6 py-3">
+        <div className="border-b border-[#E5E2DC] bg-[#ffffff] px-6 py-3">
           <div className="max-w-[1024px] mx-auto flex items-center justify-between gap-4">
             <p className="text-xs text-[#6C6C6C]">
               To save and share these results, please create an account.
             </p>
             <Link
               href={`/auth?save=${id}`}
-              className="shrink-0 text-xs font-medium text-[#141414] bg-[#141414] text-[#FAFAF8] px-4 py-1.5 rounded-md hover:bg-[#2a2a2a] transition-colors"
+              className="shrink-0 text-xs font-medium text-white bg-[#141414] px-4 py-1.5 rounded-md hover:bg-[#333333] transition-colors"
             >
               Save results
             </Link>
@@ -277,120 +284,162 @@ export default async function ReportPage({ params }: Props) {
 
 
 
-      {/* Report page header — always visible */}
-      <div className="px-6 pt-10 pb-0 max-w-[1024px] mx-auto w-full fade-up">
-        <div className="space-y-1.5 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">
-              AI Visibility Report
-            </div>
-            <ShareButton reportId={id} />
-          </div>
-          <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={faviconUrl(new URL(report.url).hostname)}
-              alt=""
-              width={28}
-              height={28}
-              className="rounded-md"
-            />
-            <h1
-              className="text-[clamp(1.6rem,4vw,2.6rem)] leading-[1.05] tracking-tight text-[#141414]"
-              style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
-            >
-              {report.company_name ?? new URL(report.url).hostname}
-            </h1>
-          </div>
-          {report.category && (
-            <p className="text-base text-[#6C6C6C]">{report.category}</p>
-          )}
-        </div>
-
-        {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono mb-6">
-          <span>{probeCount} probes</span>
-          <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-          <span>4 platforms</span>
-          <span className="w-1 h-1 rounded-full bg-[#CDCBC6]" />
-          <span>{report.completed_at ? new Date(report.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
-        </div>
-      </div>
-
-      <div className="flex-1 px-6 pb-12 max-w-[1024px] mx-auto w-full">
+      {/* Report page header + body */}
+      <div className="flex-1 px-6 pt-10 pb-12 max-w-[1024px] mx-auto w-full fade-up">
         <ReportTabs
           recommendations={recommendations}
+          headerLeft={
+            <div>
+              <div className="space-y-1.5 mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-[#ABABAB] tracking-widest uppercase">AI Visibility Report</span>
+                  <ShareButton reportId={id} />
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={faviconUrl(new URL(report.url).hostname)}
+                    alt=""
+                    width={28}
+                    height={28}
+                    className="rounded-md"
+                  />
+                  <h1
+                    className="text-[clamp(1.6rem,4vw,2.6rem)] leading-[1.05] tracking-tight text-[#141414]"
+                    style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}
+                  >
+                    {report.company_name ?? new URL(report.url).hostname}
+                  </h1>
+                </div>
+                {report.category && (
+                  <p className="text-base text-[#6C6C6C]">{report.category}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#ABABAB] font-mono">
+                <span>{probeCount} probes</span>
+                <span className="w-1 h-1 rounded-full bg-[#E5E2DC]" />
+                <span>4 platforms</span>
+                <span className="w-1 h-1 rounded-full bg-[#E5E2DC]" />
+                <span>{report.completed_at ? new Date(report.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+              </div>
+            </div>
+          }
+          headerRight={scores.length > 0 ? (() => {
+            const r = 46
+            const sw = 7
+            const circ = 2 * Math.PI * r
+            const filled = (overallScore / 100) * circ
+            const color = severityColor(overallScore)
+            return (
+              <svg viewBox="0 0 120 120" width="192" height="192">
+                  <circle cx="60" cy="60" r={r} fill="none" stroke="#E5E2DC" strokeWidth={sw} />
+                  <circle
+                    cx="60" cy="60" r={r} fill="none"
+                    stroke={color}
+                    strokeWidth={sw}
+                    strokeDasharray={`${filled} ${circ}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 60 60)"
+                  />
+                  <text
+                    x="60" y="54" textAnchor="middle" dominantBaseline="central"
+                    fontSize="34" fontWeight="700" fill={color}
+                    fontFamily="var(--font-geist-sans)"
+                  >
+                    {overallScore}
+                  </text>
+                  <text
+                    x="60" y="72" textAnchor="middle" dominantBaseline="central"
+                    fontSize="11" fontWeight="600" fill={color}
+                    fontFamily="var(--font-geist-mono)"
+                    letterSpacing="2"
+                  >
+                    {severityLabel(overallScore).toUpperCase()}
+                  </text>
+                </svg>
+            )
+          })() : undefined}
           overview={
-            <div className="space-y-12">
-              {/* Visibility Assessment card */}
+            <div className="space-y-10">
+              {/* Visibility Assessment */}
               {scores.length > 0 && report.category && (
-                <div className="space-y-4">
-                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Overview</h2>
-                <div className="rounded-lg border border-[#E5E2DC] bg-white px-5 py-4 flex flex-col gap-4">
-                  <div className="flex flex-col-reverse sm:flex-row items-start gap-6">
-                    <p
-                      className={`flex-1 text-2xl leading-snug ${severityClass(overallScore)}`}
-                      style={{ fontFamily: 'var(--font-geist-sans)' }}
-                    >
-                      {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
-                    </p>
-                    <div className="shrink-0 sm:self-start flex flex-col items-center gap-2">
-                      <span
-                        className={`text-5xl leading-none tracking-tight font-semibold severity-${severityBand(overallScore)}`}
-                        style={{ fontFamily: 'var(--font-geist-sans)' }}
-                      >
-                        {overallScore}
-                      </span>
-                      <span className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border severity-bg-${severityBand(overallScore)} severity-${severityBand(overallScore)}`}>
-                        {severityLabel(overallScore)}
-                      </span>
+                <div className="flex gap-8">
+                  <div className="w-1/4 shrink-0 pt-1 space-y-1.5">
+                    <h2 className="tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600, fontSize: '1.5rem' }}>Overall Visibility</h2>
+                    <p className="text-xs text-[#ABABAB] leading-relaxed">How often your brand surfaces in AI-generated responses across platforms.</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] px-5 py-5">
+                      <p className={`text-2xl leading-snug ${severityClass(overallScore)}`} style={{ fontFamily: 'var(--font-geist-sans)' }}>
+                        {buildSummary(report.company_name ?? new URL(report.url).hostname, report.category, overallScore, scores)}
+                      </p>
                     </div>
                   </div>
-                </div>
-                </div>
-              )}
-              {/* Competitive ranking */}
-              {quadrantPoints.length > 1 && rankingTotal > 0 && (
-                <div className="space-y-4 fade-up fade-up-1">
-                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Competitive Ranking</h2>
-                  <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
-                </div>
-              )}
-
-              {/* Top Voices */}
-              {sourceGapResult.hasAnyData && (
-                <div className="space-y-4 fade-up fade-up-2">
-                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Influential Voices</h2>
-                  <InfluentialPublications entries={
-                    (Object.values(sourceGapResult.byType) as import('@/lib/analysis/source-gaps').DomainEntry[][])
-                      .flat()
-                      .sort((a, b) => b.citedInProbeCount - a.citedInProbeCount)
-                  } />
-                </div>
-              )}
-
-              {/* Insights */}
-              {insights.salienceTotal > 0 && (
-                <div className="space-y-4 fade-up fade-up-3">
-                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Insights</h2>
-                  <InsightsSection
-                    insights={insights}
-                    companyName={report.company_name ?? new URL(report.url).hostname}
-                    description={report.inference_json?.canonical_description}
-                  />
                 </div>
               )}
 
               {/* Quick wins */}
               {recommendations.length > 0 && (
-                <div className="space-y-4 fade-up fade-up-3">
-                  <h2 className="text-xl tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600 }}>Recommendations</h2>
-                  <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
-                    {recommendations.slice(0, 5).map((rec, i) => (
-                      <RecCard key={rec.id} rec={rec} index={i} />
-                    ))}
+                <div className="flex gap-8 fade-up fade-up-1">
+                  <div className="w-1/4 shrink-0 pt-1 space-y-1.5">
+                    <h2 className="tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600, fontSize: '1.5rem' }}>Top Actions</h2>
+                    <p className="text-xs text-[#ABABAB] leading-relaxed">Prioritized actions to improve your AI visibility score.</p>
                   </div>
-                  <ViewAllRecsButton />
+                  <div className="flex-1 min-w-0 space-y-3">
+                    <div className="rounded-lg border border-[#E5E2DC] overflow-hidden divide-y divide-[#E5E2DC]">
+                      {recommendations.slice(0, 5).map((rec, i) => (
+                        <RecCard key={rec.id} rec={rec} index={i} />
+                      ))}
+                    </div>
+                    <ViewAllRecsButton />
+                  </div>
+                </div>
+              )}
+
+              {/* Competitive ranking */}
+              {quadrantPoints.length > 1 && rankingTotal > 0 && (
+                <div className="flex gap-8 fade-up fade-up-2">
+                  <div className="w-1/4 shrink-0 pt-1 space-y-1.5">
+                    <h2 className="tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600, fontSize: '1.5rem' }}>Competitive Ranking</h2>
+                    <p className="text-xs text-[#ABABAB] leading-relaxed">How your mention rate compares to key competitors in brand-agnostic queries.</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CompetitorQuadrant points={quadrantPoints} totalProbes={rankingTotal} />
+                  </div>
+                </div>
+              )}
+
+              {/* Top Voices */}
+              {sourceGapResult.hasAnyData && (
+                <div className="flex gap-8 fade-up fade-up-3">
+                  <div className="w-1/4 shrink-0 pt-1 space-y-1.5">
+                    <h2 className="tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600, fontSize: '1.5rem' }}>Influential Voices</h2>
+                    <p className="text-xs text-[#ABABAB] leading-relaxed">The sources AI models cite most when responding to queries in your category.</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <InfluentialPublications entries={
+                      (Object.values(sourceGapResult.byType) as import('@/lib/analysis/source-gaps').DomainEntry[][])
+                        .flat()
+                        .sort((a, b) => b.citedInProbeCount - a.citedInProbeCount)
+                    } />
+                  </div>
+                </div>
+              )}
+
+              {/* Insights */}
+              {insights.salienceTotal > 0 && (
+                <div className="flex gap-8 fade-up fade-up-4">
+                  <div className="w-1/4 shrink-0 pt-1 space-y-1.5">
+                    <h2 className="tracking-tight text-[#141414]" style={{ fontFamily: 'var(--font-geist-sans)', fontWeight: 600, fontSize: '1.5rem' }}>Insights</h2>
+                    <p className="text-xs text-[#ABABAB] leading-relaxed">Patterns in how AI models understand and represent your brand.</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <InsightsSection
+                      insights={insights}
+                      companyName={report.company_name ?? new URL(report.url).hostname}
+                      description={report.inference_json?.canonical_description}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -417,8 +466,6 @@ export default async function ReportPage({ params }: Props) {
             )
           }
         />
-
-
       </div>
 
       {/* Footer */}
@@ -435,7 +482,7 @@ export default async function ReportPage({ params }: Props) {
 
 function RecCard({ rec, index }: { rec: Recommendation; index: number }) {
   return (
-    <div className="flex items-center gap-4 bg-white px-5 py-3">
+    <div className="flex items-center gap-4 bg-[#ffffff] px-5 py-3">
       <span className="score-number text-xl text-[#CDCBC6] shrink-0">{index + 1}</span>
       <p className="flex-1 min-w-0 text-sm text-[#141414]">{rec.title}</p>
     </div>

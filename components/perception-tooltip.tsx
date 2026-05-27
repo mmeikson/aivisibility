@@ -24,9 +24,9 @@ export function PerceptionAccordion({ category, description }: Props) {
 
       {open && (
         <div className="mt-2 rounded-md border border-[#E5E2DC] bg-[#F7F6F3] px-4 py-3 space-y-1">
-          <p className="text-[10px] font-mono text-[#ABABAB] uppercase tracking-widest">How AI currently perceives your brand</p>
+          <p className="text-[11px] font-mono text-[#ABABAB] uppercase tracking-widest">How AI currently perceives your brand</p>
           <p className="text-sm text-[#6C6C6C] leading-relaxed">&ldquo;{description}&rdquo;</p>
-          <p className="text-[11px] text-[#ABABAB] leading-relaxed">Inferred from your website. Drives all probes and scoring — if it&rsquo;s off, your site is likely sending mixed signals to AI models.</p>
+          <p className="text-[12px] text-[#ABABAB] leading-relaxed">Inferred from your website. Drives all probes and scoring — if it&rsquo;s off, your site is likely sending mixed signals to AI models.</p>
         </div>
       )}
     </div>

@@ -14,7 +14,7 @@ export function ShareButton({ reportId }: { reportId: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="inline-flex items-center gap-1.5 text-xs font-mono text-[#ABABAB] hover:text-[#141414] transition-colors"
+      className="inline-flex items-center gap-1.5 text-xs font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors"
     >
       {copied ? (
         <>

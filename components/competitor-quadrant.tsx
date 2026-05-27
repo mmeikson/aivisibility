@@ -7,9 +7,9 @@ const VISIBLE_COUNT = 8
 export interface CompetitorPoint {
   name: string
   domain: string
-  mentions: number       // raw count across eligible probes
-  mentionRate: number    // 0–1
-  strength: number       // unused, kept for interface compat
+  mentions: number
+  mentionRate: number
+  strength: number
   isTarget: boolean
 }
 
@@ -28,14 +28,14 @@ export function CompetitorQuadrant({ points, totalProbes }: Props) {
   const hiddenCount = sorted.length - VISIBLE_COUNT
 
   return (
-    <div className="rounded-lg border border-[#E5E2DC] bg-white px-6 py-4 space-y-2.5">
+    <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] px-6 py-4 space-y-2.5">
       {visible.map((pt) => (
         <div key={pt.name} className="flex items-center gap-3">
           {/* Brand chip */}
           <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs whitespace-nowrap shrink-0 w-44
             ${pt.isTarget
-              ? 'bg-[#141414] border-[#141414] text-white'
-              : 'bg-white border-[#E5E2DC] text-[#6C6C6C]'
+              ? 'bg-[#141414] border-[#141414] text-[#FAFAF8]'
+              : 'bg-[#F3F2EF] border-[#E5E2DC] text-[#6C6C6C]'
             }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -52,7 +52,7 @@ export function CompetitorQuadrant({ points, totalProbes }: Props) {
           {/* Bar */}
           <div className="flex-1 h-1.5 bg-[#F3F2EF] rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-700 ${pt.isTarget ? 'bg-[#141414]' : 'bg-[#CDCBC6]'}`}
+              className={`h-full rounded-full transition-all duration-700 ${pt.isTarget ? 'bg-[#141414]' : 'bg-[#ABABAB]'}`}
               style={{ width: `${pt.mentionRate * 100}%` }}
             />
           </div>
@@ -65,13 +65,13 @@ export function CompetitorQuadrant({ points, totalProbes }: Props) {
       ))}
 
       <div className="flex items-center justify-between pt-1">
-        <p className="text-[10px] text-[#ABABAB] font-mono">
+        <p className="text-[11px] text-[#ABABAB] font-mono">
           Mention rate across {totalProbes} brand-agnostic probes · 4 platforms
         </p>
         {hiddenCount > 0 && (
           <button
             onClick={() => setShowAll((v) => !v)}
-            className="text-[10px] font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors tracking-wide"
+            className="text-[11px] font-mono text-[#6C6C6C] hover:text-[#141414] transition-colors tracking-wide"
           >
             {showAll ? 'SHOW LESS ↑' : `+${hiddenCount} MORE ↓`}
           </button>

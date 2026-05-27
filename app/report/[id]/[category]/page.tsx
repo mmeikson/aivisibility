@@ -107,14 +107,14 @@ export default async function CategoryPage({ params }: Props) {
   return (
     <main className="min-h-screen flex flex-col bg-[#FAFAF8]">
       {/* Top bar */}
-      <header className="px-8 py-5 flex items-center justify-between border-b border-[#E5E2DC]">
+      <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link
           href={`/report/${id}`}
           className="text-xs font-mono text-[#6C6C6C] tracking-widest uppercase hover:text-[#141414] transition-colors"
         >
           ← {report.company_name ?? 'Report'}
         </Link>
-      </header>
+      </div></header>
 
       <div className="flex-1 px-6 py-12 max-w-[1024px] mx-auto w-full space-y-12">
 
@@ -140,8 +140,8 @@ export default async function CategoryPage({ params }: Props) {
 
         {/* Disambiguation notice — entity only */}
         {cat === 'entity' && confusedProbes.length > 0 && (
-          <div className="rounded-md border border-[#fde68a] bg-[#fffbeb] px-4 py-3 fade-up fade-up-1">
-            <p className="text-xs text-[#92400e] leading-relaxed">
+          <div className="rounded-md border border-[#ceac01/30] bg-[#ceac01/10] px-4 py-3 fade-up fade-up-1">
+            <p className="text-xs text-[#ceac01] leading-relaxed">
               ⚠ {confusedProbes.length} of {probeCount} responses described a different entity
               {confusedWith.length > 0 && <> ({confusedWith.join(', ')})</>}.
               {' '}AI models may be conflating your brand with another, which directly penalises your entity score.
@@ -156,7 +156,7 @@ export default async function CategoryPage({ params }: Props) {
             <span className="flex-1 h-px bg-[#E5E2DC]" />
           </div>
 
-          <div className="rounded-lg border border-[#E5E2DC] bg-white overflow-hidden">
+          <div className="rounded-lg border border-[#E5E2DC] bg-[#ffffff] overflow-hidden">
             {components.map(([key, value], i) => {
               const max = COMPONENT_MAX[key] ?? 20
               const pct = Math.round((value / max) * 100)
