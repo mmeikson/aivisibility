@@ -61,7 +61,10 @@ function AuthForm() {
 
   async function handleGoogle() {
     setError('')
-    const callbackUrl = `${window.location.origin}/auth/callback?next=${next}${saveId ? `&save=${saveId}` : ''}`
+    // Store save/next in cookies so redirectTo stays clean and matches Supabase's allowlist
+    if (saveId) document.cookie = `oauth_save=${saveId}; path=/; max-age=600; SameSite=Lax`
+    if (next !== '/dashboard') document.cookie = `oauth_next=${encodeURIComponent(next)}; path=/; max-age=600; SameSite=Lax`
+    const callbackUrl = `${window.location.origin}/auth/callback`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: callbackUrl },
@@ -74,7 +77,7 @@ function AuthForm() {
       <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
       </div></header>
 

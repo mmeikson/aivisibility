@@ -8,7 +8,6 @@ import type { PipelineEvent } from '@/lib/db/types'
 import SudokuGame from '@/components/sudoku-game'
 
 const STEP_ORDER = [
-  'crawl_start',
   'crawl_done',
   'inference_done',
   'probes_start',
@@ -128,7 +127,7 @@ export default function LoadingPage() {
       <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
       </div></header>
 
@@ -167,7 +166,7 @@ export default function LoadingPage() {
             <div className="flex justify-between">
               <span className="text-xs font-mono text-[#ABABAB]">{progress}%</span>
               <span className="text-xs font-mono text-[#ABABAB]">
-                {isComplete ? elapsed : `${elapsed} · ~2–3 min`}
+                {isComplete ? elapsed : `${elapsed} · ~3–5 min`}
               </span>
             </div>
           </div>

@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/dashboard'
-  const saveId = searchParams.get('save')
+
+  // Prefer query params (email flow), fall back to cookies (Google OAuth flow)
+  const saveId = searchParams.get('save') ?? request.cookies.get('oauth_save')?.value ?? null
+  const next = searchParams.get('next') ?? (request.cookies.get('oauth_next') ? decodeURIComponent(request.cookies.get('oauth_next')!.value) : '/dashboard')
 
   if (code) {
     const supabase = await createSupabaseServerClient()
@@ -24,7 +26,11 @@ export async function GET(request: NextRequest) {
       }
 
       const redirectTo = saveId ? `/report/${saveId}?saved=1` : next
-      return NextResponse.redirect(`${origin}${redirectTo}`)
+      const response = NextResponse.redirect(`${origin}${redirectTo}`)
+      // Clear OAuth state cookies
+      response.cookies.set('oauth_save', '', { path: '/', maxAge: 0 })
+      response.cookies.set('oauth_next', '', { path: '/', maxAge: 0 })
+      return response
     }
   }
 
