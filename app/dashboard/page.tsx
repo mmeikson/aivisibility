@@ -67,7 +67,7 @@ export default async function DashboardPage() {
       <header className="border-b border-[#E5E2DC]"><div className="max-w-[1024px] mx-auto w-full px-6 py-5 flex items-center justify-between">
         <Link href="/">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto", filter: "brightness(0) invert(1)" }} />
+          <img src="/PerceloLogo.svg" alt="Percelo" style={{ height: "20px", width: "auto" }} />
         </Link>
         <div className="flex items-center gap-4">
           <span className="text-xs text-[#ABABAB]">{user.email}</span>
