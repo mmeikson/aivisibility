@@ -60,7 +60,7 @@ async function fetchDirectMeta(url: string): Promise<string | null> {
         'Accept-Language': 'en-US,en;q=0.5',
       },
       redirect: 'follow',
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(8_000),
     })
     if (!res.ok) return null
     const meta = extractMeta(await res.text())
@@ -101,7 +101,7 @@ async function fetchDirect(url: string): Promise<string | null> {
         'Accept-Language': 'en-US,en;q=0.5',
       },
       redirect: 'follow',
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(8_000),
     })
     if (!res.ok) return null
     const html = await res.text()
@@ -117,7 +117,7 @@ async function fetchJina(url: string): Promise<string | null> {
   try {
     const res = await fetch(`https://r.jina.ai/${url}`, {
       headers: { Accept: 'text/plain', 'X-No-Cache': 'true' },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(12_000),
     })
     if (!res.ok) return null
     const text = (await res.text()).trim()

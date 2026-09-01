@@ -25,6 +25,20 @@ function jitter(minMs: number, maxMs: number): Promise<void> {
   return new Promise((r) => setTimeout(r, minMs + Math.random() * (maxMs - minMs)))
 }
 
+// Per-fetch timeouts (see lib/crawler.ts) already cap each URL, but at
+// concurrency 5 a batch of slow/unresponsive domains can still stack up to
+// several minutes. Give the whole batch a hard wall-clock budget and return
+// whatever's been collected so far once it's exceeded, rather than blocking
+// the pipeline on the last few stragglers.
+const BATCH_BUDGET_MS = 45_000
+
+function withBudget<T>(work: Promise<T>, budgetMs: number, onTimeout: () => void): Promise<void> {
+  return Promise.race([
+    work.then(() => {}),
+    new Promise<void>((resolve) => setTimeout(() => { onTimeout(); resolve() }, budgetMs)),
+  ])
+}
+
 // Crawl citation URLs and return page text snippets for Haiku classification.
 // Returns url → text snippet (500 chars); absent entries mean the crawl failed.
 export async function crawlCitationUrls(
@@ -38,7 +52,7 @@ export async function crawlCitationUrls(
   console.log(`[crawl-citations] crawling ${sorted.length} URLs (capped at ${MAX_URLS})`)
 
   const limit = makeLimiter(CONCURRENCY)
-  await Promise.all(
+  const work = Promise.all(
     sorted.map(({ url }) =>
       limit(async () => {
         await jitter(150, 400)
@@ -50,6 +64,9 @@ export async function crawlCitationUrls(
         } catch { /* ignore */ }
       })
     )
+  )
+  await withBudget(work, BATCH_BUDGET_MS, () =>
+    console.log(`[crawl-citations] budget exceeded, proceeding with ${results.size}/${sorted.length} so far`)
   )
 
   console.log(`[crawl-citations] done: ${results.size}/${sorted.length} crawled`)
@@ -70,7 +87,7 @@ export async function crawlDomainHomepages(
   console.log(`[crawl-citations] fetching ${capped.length} homepages`)
 
   const limit = makeLimiter(CONCURRENCY)
-  await Promise.all(
+  const work = Promise.all(
     capped.map((domain) =>
       limit(async () => {
         await jitter(100, 300)
@@ -80,6 +97,9 @@ export async function crawlDomainHomepages(
         } catch { /* ignore */ }
       })
     )
+  )
+  await withBudget(work, BATCH_BUDGET_MS, () =>
+    console.log(`[crawl-citations] budget exceeded, proceeding with ${results.size}/${capped.length} so far`)
   )
 
   console.log(`[crawl-citations] homepages: ${results.size}/${capped.length} fetched`)
